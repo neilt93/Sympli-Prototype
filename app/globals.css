@@ -1,0 +1,242 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+  
+  * {
+    @apply border-gray-200;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-100 hover:bg-gray-200 text-gray-900 font-medium py-3 px-6 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2;
+  }
+  
+  .btn-danger {
+    @apply bg-danger-600 hover:bg-danger-700 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-danger-500 focus:ring-offset-2;
+  }
+  
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors duration-200;
+  }
+  
+  .health-status-good {
+    @apply text-health-600 bg-health-50 border-health-200;
+  }
+  
+  .health-status-warning {
+    @apply text-warning-600 bg-warning-50 border-warning-200;
+  }
+  
+  .health-status-danger {
+    @apply text-danger-600 bg-danger-50 border-danger-200;
+  }
+}
+
+@layer utilities {
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  .safe-area-left {
+    padding-left: env(safe-area-inset-left);
+  }
+  
+  .safe-area-right {
+    padding-right: env(safe-area-inset-right);
+  }
+  
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Custom animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(14, 165, 233, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(14, 165, 233, 0.8);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.4s ease-out;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Voice recording indicator */
+.recording-indicator {
+  @apply fixed top-4 right-4 bg-danger-600 text-white px-4 py-2 rounded-full flex items-center gap-2 z-50;
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+.recording-pulse {
+  @apply w-3 h-3 bg-white rounded-full;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+/* Offline indicator */
+.offline-indicator {
+  @apply fixed top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-full flex items-center gap-2 z-50;
+}
+
+/* Install prompt */
+.install-prompt {
+  @apply fixed bottom-20 left-4 right-4 bg-white border border-gray-200 rounded-xl shadow-lg p-4 z-50;
+}
+
+/* Bottom navigation */
+.bottom-nav {
+  @apply fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center py-2 safe-area-bottom;
+}
+
+.nav-item {
+  @apply flex flex-col items-center gap-1 text-gray-600 hover:text-primary-600 transition-colors duration-200;
+}
+
+.nav-item.active {
+  @apply text-primary-600;
+}
+
+/* Chat bubbles */
+.chat-bubble-user {
+  @apply bg-primary-600 text-white rounded-2xl rounded-br-md px-4 py-3 max-w-xs ml-auto;
+}
+
+.chat-bubble-ai {
+  @apply bg-gray-100 text-gray-900 rounded-2xl rounded-bl-md px-4 py-3 max-w-xs;
+}
+
+/* Voice input button */
+.voice-input-btn {
+  @apply bg-primary-600 hover:bg-primary-700 text-white rounded-full p-4 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+}
+
+.voice-input-btn:active {
+  @apply scale-95;
+}
+
+.voice-input-btn.recording {
+  @apply bg-danger-600 animate-pulse-glow;
+}
+
+/* Health timeline */
+.timeline-item {
+  @apply relative pl-8 pb-6 border-l-2 border-gray-200;
+}
+
+.timeline-item::before {
+  content: '';
+  @apply absolute left-0 top-0 w-4 h-4 bg-primary-600 rounded-full border-2 border-white transform -translate-x-2;
+}
+
+.timeline-item:last-child {
+  @apply border-l-0;
+}
+
+/* Responsive design */
+@media (max-width: 640px) {
+  .container {
+    @apply px-4;
+  }
+  
+  .card {
+    @apply p-4;
+  }
+  
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    @apply py-2.5 px-4 text-sm;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  body {
+    @apply bg-gray-900 text-gray-100;
+  }
+  
+  .card {
+    @apply bg-gray-800 border-gray-700;
+  }
+  
+  .input-field {
+    @apply bg-gray-800 border-gray-700 text-gray-100;
+  }
+  
+  .bottom-nav {
+    @apply bg-gray-800 border-gray-700;
+  }
+  
+  .nav-item {
+    @apply text-gray-400 hover:text-primary-400;
+  }
+  
+  .nav-item.active {
+    @apply text-primary-400;
+  }
+}
