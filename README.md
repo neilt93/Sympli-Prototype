@@ -30,25 +30,7 @@ OPENAI_API_KEY=your_openai_key
 ```
 
 ### 3. Database Setup
-Run this SQL in your Supabase SQL editor:
-```sql
--- Create symptom_logs table
-CREATE TABLE symptom_logs (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  symptom_data JSONB NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  data_retention_until TIMESTAMP WITH TIME ZONE
-);
-
--- Enable RLS
-ALTER TABLE symptom_logs ENABLE ROW LEVEL SECURITY;
-
--- Create policy
-CREATE POLICY "Users can only access their own symptom logs" 
-ON symptom_logs FOR ALL 
-USING (auth.uid() = user_id);
-```
+Run the SQL from `backend/setup_supabase_tables.sql` in your Supabase SQL editor.
 
 ### 4. Run the App
 ```bash
@@ -65,18 +47,27 @@ Visit `http://localhost:3000`
 ## 🛠️ Available Commands
 
 ```bash
-# Development
+# Frontend (Next.js)
 npm run dev          # Start development server
 npm run build        # Build for production
 npm run start        # Start production server
 npm run lint         # Run ESLint
 
-# Database (if using backend)
+# Backend (Python)
 cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
+
+# Start auth API
 python start_backend.py
+# OR directly: python scripts/auth_api.py
+
+# Windows users can also use:
+# start_auth_demo.bat
+
+# Quick start from root
+./start.sh          # Start frontend (Unix/Mac)
 ```
 
 ## 📱 Features
