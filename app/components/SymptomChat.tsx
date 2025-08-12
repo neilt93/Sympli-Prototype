@@ -16,14 +16,21 @@ interface Message {
 }
 
 interface SymptomData {
-  topic?: string;
+  symptom?: string;
+  type?: 'new' | 'ongoing';
   description?: string;
-  isNew?: boolean;
-  severity?: string;
-  duration?: string;
-  location?: string;
-  triggers?: string;
-  notes?: string;
+  socratesData?: {
+    site: string;
+    onset: string;
+    character: string;
+    radiation: string;
+    associations: string;
+    timeCourse: string;
+    exacerbatingFactors: string;
+    severity: string;
+    additionalContext: string;
+  };
+  reportData?: any;
 }
 
 interface PDFData {
@@ -38,21 +45,27 @@ export default function SymptomChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isProcessingOption, setIsProcessingOption] = useState(false);
   const [currentFlow, setCurrentFlow] = useState<'idle' | 'logging' | 'timeline' | 'pdf'>('idle');
   const [symptomData, setSymptomData] = useState<SymptomData>({});
   const [pdfData, setPdfData] = useState<PDFData>({});
   const [currentPDFContent, setCurrentPDFContent] = useState<string>('');
+  const [socratesStep, setSocratesStep] = useState<string>('');
+  const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
+  const [currentFollowUpIndex, setCurrentFollowUpIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   useEffect(() => {
-    // Initialize with welcome message
-    addMessage({
-      type: 'ai',
-      content: "Hi! I'm Sympli, your health companion. How can I help you today?",
-      options: ['Log a Symptom', 'View Timeline', 'Generate GP PDF']
-    });
-  }, []);
+    // Initialize with welcome message only once
+    if (!hasInitialized) {
+      addMessage({
+        type: 'ai',
+        content: "Hi! I'm Sympli, your health companion. How can I help you today?",
+        options: ['Log a Symptom', 'View Timeline', 'Generate GP PDF']
+      });
+      setHasInitialized(true);
+    }
+  }, [hasInitialized]);
 
   useEffect(() => {
     scrollToBottom();
@@ -62,16 +75,40 @@ export default function SymptomChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const getRandomSocratesIntro = () => {
+    const intros = [
+      "I'll help gather some information for the doctor. Let me ask you a few questions about your symptoms.",
+      "Let me get some details about what you're experiencing so I can prepare everything for the doctor.",
+      "I'd like to understand your symptoms better to help the doctor. Can you tell me more about what's happening?",
+      "Let me ask you some questions about your symptoms so I can make sure the doctor has all the information they need.",
+      "I'll help prepare you for the doctor by gathering some key information about your symptoms.",
+      "Let me get a better understanding of your symptoms so I can assist the doctor effectively.",
+      "I'd like to ask you a few questions about your symptoms to help the doctor with their assessment.",
+      "Let me gather some information about what you're experiencing so the doctor can help you properly."
+    ];
+    return intros[Math.floor(Math.random() * intros.length)];
+  };
+
   const addMessage = (message: Omit<Message, 'id' | 'timestamp'>) => {
     const newMessage: Message = {
       ...message,
       id: Date.now().toString(),
       timestamp: new Date()
     };
+    console.log('🤖 AI Message Added:', {
+      type: message.type,
+      content: message.content,
+      options: message.options,
+      timestamp: newMessage.timestamp
+    });
     setMessages(prev => [...prev, newMessage]);
   };
 
   const handleOptionSelect = (option: string) => {
+    console.log('🎯 Option Selected:', option);
+    console.log('📊 Current Flow State:', currentFlow);
+    console.log('📋 Current Symptom Data:', symptomData);
+    
     // Check for menu command
     if (option.toLowerCase() === 'menu') {
       addMessage({
@@ -89,15 +126,19 @@ export default function SymptomChat() {
 
     switch (option) {
       case 'Log a Symptom':
+        console.log('🚀 Starting Symptom Logging Flow');
         startSymptomLogging();
         break;
       case 'View Timeline':
+        console.log('📅 Starting Timeline View Flow');
         startTimelineView();
         break;
       case 'Generate GP PDF':
+        console.log('📄 Starting PDF Generation Flow');
         startPDFGeneration();
         break;
       default:
+        console.log('🔄 Handling Flow Option:', option);
         handleFlowOption(option);
     }
   };
@@ -105,11 +146,14 @@ export default function SymptomChat() {
   const startSymptomLogging = () => {
     setCurrentFlow('logging');
     setSymptomData({});
+    setSocratesStep('');
+    setFollowUpQuestions([]);
+    setCurrentFollowUpIndex(0);
     
     setTimeout(() => {
       addMessage({
         type: 'ai',
-        content: "Let's log your symptom. What type of health concern are you experiencing?",
+        content: "Let's log your symptom using clinical best practices. What type of health concern are you experiencing?",
         options: ['Headache', 'Pain', 'Digestive Issues', 'Fatigue', 'Other']
       });
     }, 1000);
@@ -133,8 +177,7 @@ export default function SymptomChat() {
     setTimeout(() => {
       addMessage({
         type: 'ai',
-        content: "I'll help you create a comprehensive report for your GP. Let's start with the basics.",
-        options: ['Start PDF Generation']
+        content: "I'll create a comprehensive GP report using your logged symptoms. What's the main reason for your appointment?",
       });
     }, 1000);
   };
@@ -150,120 +193,348 @@ export default function SymptomChat() {
   };
 
   const handleSymptomLogging = (option: string) => {
-    if (!symptomData.topic) {
-      setSymptomData(prev => ({ ...prev, topic: option }));
-      
-      setTimeout(() => {
+    console.log('🔍 Symptom Logging Step:', {
+      option,
+      hasSymptom: !!symptomData.symptom,
+      hasType: !!symptomData.type,
+      socratesStep,
+      followUpQuestionsLength: followUpQuestions.length,
+      currentFollowUpIndex
+    });
+
+    if (!symptomData.symptom) {
+      // First step: Symptom selection
+      console.log('📝 Step 1: Symptom Selection');
+      if (option === 'Other') {
+        console.log('📝 User selected "Other" - asking for description');
         addMessage({
           type: 'ai',
-          content: `Tell me about your ${option.toLowerCase()}. Describe it in your own words.`
+          content: "What is the problem? Please describe your symptom in detail."
         });
-      }, 1000);
-    } else if (!symptomData.description) {
-      setSymptomData(prev => ({ ...prev, description: option }));
-      
-      setTimeout(() => {
-        addMessage({
-          type: 'ai',
-          content: "Is this a new symptom or something ongoing?",
-          options: ['New', 'Ongoing']
-        });
-      }, 1000);
-    } else if (!symptomData.isNew) {
-      const isNew = option === 'New';
-      setSymptomData(prev => ({ ...prev, isNew }));
-      
-      setTimeout(() => {
-        if (isNew) {
+      } else {
+        console.log('📝 User selected symptom:', option);
+        setSymptomData(prev => ({ ...prev, symptom: option }));
+        setTimeout(() => {
           addMessage({
             type: 'ai',
-            content: "Since this is new, let me ask a few more questions. How severe is it?",
-            options: ['Mild', 'Moderate', 'Severe']
+            content: "Is this a new symptom or something ongoing?",
+            options: ['New', 'Ongoing']
           });
+        }, 1000);
+      }
+    } else if (!symptomData.type) {
+      // Second step: New or Ongoing
+      console.log('📝 Step 2: New or Ongoing Selection');
+      const type = option === 'New' ? 'new' : 'ongoing';
+      console.log('📝 User selected type:', type);
+      setSymptomData(prev => ({ ...prev, type }));
+      
+      setTimeout(() => {
+        addMessage({
+          type: 'ai',
+          content: getRandomSocratesIntro(),
+        });
+      }, 1000);
+      setSocratesStep('site');
+      console.log('📝 Starting SOCRATES with step: site');
+    } else if (socratesStep) {
+      // SOCRATES questions
+      console.log('📝 SOCRATES Question:', { currentStep: socratesStep, answer: option });
+      handleSocratesQuestion(option);
+    } else if (followUpQuestions.length > 0 && currentFollowUpIndex < followUpQuestions.length) {
+      // Follow-up questions
+      console.log('📝 Follow-up Question:', { 
+        currentIndex: currentFollowUpIndex, 
+        totalQuestions: followUpQuestions.length,
+        answer: option 
+      });
+      handleFollowUpQuestion(option);
+    } else if (currentFollowUpIndex >= followUpQuestions.length && followUpQuestions.length > 0) {
+      // Generate report
+      console.log('📝 Generating Report');
+      generateSymptomReport();
+    }
+  };
+
+  const handleSocratesQuestion = (answer: string) => {
+    console.log('🔍 SOCRATES Processing:', { currentStep: socratesStep, answer });
+    
+    const socratesData = symptomData.socratesData || {
+      site: '',
+      onset: '',
+      character: '',
+      radiation: '',
+      associations: '',
+      timeCourse: '',
+      exacerbatingFactors: '',
+      severity: '',
+      additionalContext: ''
+    };
+
+    const questions = [
+      { step: 'site', question: 'Where exactly are you experiencing this?', field: 'site' },
+      { step: 'onset', question: 'When did this symptom start?', field: 'onset' },
+      { step: 'character', question: 'How would you describe the character of this symptom? (e.g., sharp, dull, throbbing, burning)', field: 'character' },
+      { step: 'radiation', question: 'Does the pain or symptom radiate to other areas?', field: 'radiation' },
+      { step: 'associations', question: 'Are there any associated symptoms? (e.g., nausea, fever, sweating)', field: 'associations' },
+      { step: 'timeCourse', question: 'How has this symptom changed over time?', field: 'timeCourse' },
+      { step: 'exacerbatingFactors', question: 'What makes this symptom better or worse?', field: 'exacerbatingFactors' },
+      { step: 'severity', question: 'On a scale of 1-10, how severe is this symptom?', field: 'severity' },
+      { step: 'additionalContext', question: 'Is there anything else you think I should know about this symptom?', field: 'additionalContext' }
+    ];
+
+    const currentQuestionIndex = questions.findIndex(q => q.step === socratesStep);
+    console.log('🔍 SOCRATES Question Index:', { currentQuestionIndex, totalQuestions: questions.length });
+    
+    if (currentQuestionIndex >= 0) {
+      // Update the current field
+      const field = questions[currentQuestionIndex].field as keyof typeof socratesData;
+      socratesData[field] = answer;
+      console.log('📝 Updated SOCRATES Data:', { field, value: answer, fullData: socratesData });
+      
+      setSymptomData(prev => ({ 
+        ...prev, 
+        socratesData: { ...socratesData }
+      }));
+
+      // Move to next question or finish SOCRATES
+      if (currentQuestionIndex < questions.length - 1) {
+        const nextQuestion = questions[currentQuestionIndex + 1];
+        setSocratesStep(nextQuestion.step);
+        console.log('🔄 Moving to next SOCRATES question:', nextQuestion.step);
+        setTimeout(() => {
+          addMessage({
+            type: 'ai',
+            content: nextQuestion.question
+          });
+        }, 1000);
+      } else {
+        // SOCRATES complete, generate follow-up questions
+        console.log('✅ SOCRATES Complete! Moving to follow-up questions');
+        setSocratesStep('');
+        generateFollowUpQuestions();
+      }
+    }
+  };
+
+  const generateFollowUpQuestions = async () => {
+    console.log('🤖 Generating AI follow-up questions based on SOCRATES data:', symptomData.socratesData);
+    
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/symptoms/socrates-questions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          symptomData: {
+            symptom: symptomData.symptom,
+            type: symptomData.type,
+            description: symptomData.description
+          }
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('🤖 AI Generated Questions:', data);
+        
+        if (data.questions && data.questions.length > 0) {
+          setFollowUpQuestions(data.questions);
+          setCurrentFollowUpIndex(0);
+          
+                     setTimeout(() => {
+             addMessage({
+               type: 'ai',
+               content: data.questions[0]
+             });
+           }, 1000);
         } else {
+          console.log('❌ No questions generated by AI, moving to report generation');
+          generateSymptomReport();
+        }
+      } else {
+        console.log('❌ API failed, moving to report generation');
+        generateSymptomReport();
+      }
+    } catch (error) {
+      console.log('❌ Network error, moving to report generation:', error);
+      generateSymptomReport();
+    }
+  };
+
+  const handleFollowUpQuestion = (answer: string) => {
+    // Store the answer (in a real app, you'd save this)
+    const currentQuestion = followUpQuestions[currentFollowUpIndex];
+    
+    if (currentFollowUpIndex < followUpQuestions.length - 1) {
+      setCurrentFollowUpIndex(prev => prev + 1);
+      const nextQuestion = followUpQuestions[currentFollowUpIndex + 1];
+      
+      setTimeout(() => {
+        addMessage({
+          type: 'ai',
+          content: nextQuestion
+        });
+      }, 1000);
+    } else {
+      // All follow-up questions complete
+      setCurrentFollowUpIndex(prev => prev + 1);
+      generateSymptomReport();
+    }
+  };
+
+  const generateSymptomReport = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/symptoms/generate-report', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          symptomData: {
+            symptom: symptomData.symptom,
+            type: symptomData.type,
+            description: symptomData.description
+          },
+          socratesData: symptomData.socratesData
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const reportContent = data.reportContent || generateFallbackReport();
+        
+        setSymptomData(prev => ({ ...prev, reportData: data }));
+        
+        setTimeout(() => {
           addMessage({
             type: 'ai',
-            content: "How long have you been experiencing this?",
-            options: ['Days', 'Weeks', 'Months', 'Years']
+            content: `Here's your comprehensive symptom report:\n\n${reportContent}\n\nDoes this look correct?`,
+            options: ['Yes, Save', 'No, Edit']
           });
-        }
-      }, 1000);
-    } else if (!symptomData.severity && symptomData.isNew) {
-      setSymptomData(prev => ({ ...prev, severity: option }));
-      
+        }, 1000);
+      }
+    } catch (error) {
+      const fallbackReport = generateFallbackReport();
       setTimeout(() => {
         addMessage({
           type: 'ai',
-          content: "Where exactly are you feeling this?",
-          options: ['Head', 'Chest', 'Abdomen', 'Back', 'Limbs', 'Other']
-        });
-      }, 1000);
-    } else if (!symptomData.duration && !symptomData.isNew) {
-      setSymptomData(prev => ({ ...prev, duration: option }));
-      
-      setTimeout(() => {
-        addMessage({
-          type: 'ai',
-          content: "How severe is it?",
-          options: ['Mild', 'Moderate', 'Severe']
-        });
-      }, 1000);
-    } else if (!symptomData.severity && !symptomData.isNew) {
-      setSymptomData(prev => ({ ...prev, severity: option }));
-      
-      setTimeout(() => {
-        addMessage({
-          type: 'ai',
-          content: "Where exactly are you feeling this?",
-          options: ['Head', 'Chest', 'Abdomen', 'Back', 'Limbs', 'Other']
-        });
-      }, 1000);
-    } else if (!symptomData.location) {
-      setSymptomData(prev => ({ ...prev, location: option }));
-      
-      setTimeout(() => {
-        addMessage({
-          type: 'ai',
-          content: "What triggers or makes it worse? (If nothing specific, say 'None')"
-        });
-      }, 1000);
-    } else if (!symptomData.triggers) {
-      setSymptomData(prev => ({ ...prev, triggers: option }));
-      
-      setTimeout(() => {
-        addMessage({
-          type: 'ai',
-          content: "Any additional notes or context you'd like to add?"
-        });
-      }, 1000);
-    } else if (!symptomData.notes) {
-      setSymptomData(prev => ({ ...prev, notes: option }));
-      
-      // Generate summary
-      setTimeout(() => {
-        const summary = generateSymptomSummary();
-        addMessage({
-          type: 'ai',
-          content: `Here's a summary of what you've told me:\n\n${summary}\n\nDoes this look correct?`,
+          content: `Here's your comprehensive symptom report:\n\n${fallbackReport}\n\nDoes this look correct?`,
           options: ['Yes, Save', 'No, Edit']
         });
       }, 1000);
     }
   };
 
-  const generateSymptomSummary = () => {
-    const { topic, description, isNew, severity, duration, location, triggers, notes } = symptomData;
+  const generateFallbackReport = () => {
+    const { symptom, type, socratesData } = symptomData;
+    let report = `**Symptom Report: ${symptom}**\n\n`;
+    report += `**Type:** ${type === 'new' ? 'New Symptom' : 'Ongoing Symptom'}\n\n`;
     
-    let summary = `**${topic}**\n`;
-    summary += `Description: ${description}\n`;
-    summary += `Type: ${isNew ? 'New' : 'Ongoing'}\n`;
-    if (duration && !isNew) summary += `Duration: ${duration}\n`;
-    if (severity) summary += `Severity: ${severity}\n`;
-    if (location) summary += `Location: ${location}\n`;
-    if (triggers && triggers !== 'None') summary += `Triggers: ${triggers}\n`;
-    if (notes) summary += `Notes: ${notes}\n`;
+    if (socratesData) {
+      report += `**Clinical Summary:**\n`;
+      
+      // Create a natural language clinical summary
+      let clinicalSummary = `The patient presents with ${socratesData.character} ${symptom.toLowerCase()} `;
+      
+      if (socratesData.site) {
+        clinicalSummary += `localized to the ${socratesData.site} `;
+      }
+      
+      if (socratesData.onset) {
+        clinicalSummary += `that began ${socratesData.onset}. `;
+      }
+      
+      if (socratesData.radiation && socratesData.radiation.toLowerCase() !== 'no' && socratesData.radiation.toLowerCase() !== 'none') {
+        clinicalSummary += `The pain radiates to ${socratesData.radiation}. `;
+      }
+      
+      if (socratesData.associations && socratesData.associations.toLowerCase() !== 'no' && socratesData.associations.toLowerCase() !== 'none') {
+        clinicalSummary += `Associated symptoms include ${socratesData.associations}. `;
+      }
+      
+      if (socratesData.timeCourse) {
+        clinicalSummary += `The symptom has ${socratesData.timeCourse} over time. `;
+      }
+      
+      if (socratesData.exacerbatingFactors) {
+        clinicalSummary += `Factors that worsen the symptom include ${socratesData.exacerbatingFactors}. `;
+      }
+      
+      if (socratesData.severity) {
+        clinicalSummary += `The patient rates the severity as ${socratesData.severity}/10. `;
+      }
+      
+      if (socratesData.additionalContext) {
+        clinicalSummary += `Additional context: ${socratesData.additionalContext}. `;
+      }
+      
+      report += clinicalSummary + '\n\n';
+      
+      // Add key clinical findings in bullet points
+      report += `**Key Clinical Findings:**\n`;
+      if (socratesData.site) report += `• Location: ${socratesData.site}\n`;
+      if (socratesData.onset) report += `• Onset: ${socratesData.onset}\n`;
+      if (socratesData.character) report += `• Character: ${socratesData.character}\n`;
+      if (socratesData.radiation && socratesData.radiation.toLowerCase() !== 'no' && socratesData.radiation.toLowerCase() !== 'none') {
+        report += `• Radiation: ${socratesData.radiation}\n`;
+      }
+      if (socratesData.severity) report += `• Severity: ${socratesData.severity}/10\n`;
+    }
     
-    return summary;
+    return report;
+  };
+
+  const saveSymptom = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/symptoms/log', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          symptomData: {
+            symptom: symptomData.symptom,
+            type: symptomData.type,
+            description: symptomData.description
+          },
+          socratesData: symptomData.socratesData,
+          reportData: symptomData.reportData
+        })
+      });
+
+      if (response.ok) {
+        addMessage({
+          type: 'ai',
+          content: "✅ Symptom logged successfully! It's been added to your timeline with comprehensive details.",
+          options: ['Log Another Symptom', 'View Timeline', 'Back to Menu']
+        });
+        setCurrentFlow('idle');
+        setSymptomData({});
+        setSocratesStep('');
+        setFollowUpQuestions([]);
+        setCurrentFollowUpIndex(0);
+      } else {
+        addMessage({
+          type: 'ai',
+          content: "❌ Failed to save symptom. Please try again.",
+          options: ['Try Again', 'Back to Menu']
+        });
+      }
+    } catch (error) {
+      addMessage({
+        type: 'ai',
+        content: "❌ Network error. Please try again.",
+        options: ['Try Again', 'Back to Menu']
+      });
+    }
   };
 
   const handleTimelineView = async (option: string) => {
@@ -326,69 +597,111 @@ export default function SymptomChat() {
     }
   };
 
-  const handlePDFGeneration = (option: string) => {
-    if (option === 'Start PDF Generation') {
-      setTimeout(() => {
-        addMessage({
-          type: 'ai',
-          content: "What's the main reason for your appointment?"
-        });
-      }, 1000);
-    } else if (!pdfData.appointmentReason) {
-      setPdfData(prev => ({ ...prev, appointmentReason: option }));
-      
-      setTimeout(() => {
-        addMessage({
-          type: 'ai',
-          content: "What do you want the doctor to understand about your situation?"
-        });
-      }, 1000);
-    } else if (!pdfData.doctorUnderstanding) {
-      setPdfData(prev => ({ ...prev, doctorUnderstanding: option }));
-      
-      setTimeout(() => {
-        addMessage({
-          type: 'ai',
-          content: "What medications or remedies have you tried?"
-        });
-      }, 1000);
-    } else if (!pdfData.medicationsTried) {
-      setPdfData(prev => ({ ...prev, medicationsTried: option }));
-      
-      setTimeout(() => {
-        addMessage({
-          type: 'ai',
-          content: "Have you had any recent tests or investigations?"
-        });
-      }, 1000);
-    } else if (!pdfData.recentTests) {
-      setPdfData(prev => ({ ...prev, recentTests: option }));
-      
-      setTimeout(() => {
-        addMessage({
-          type: 'ai',
-          content: "Which symptoms from your history are most relevant to this appointment?",
-          options: ['All Recent Symptoms', 'Select Specific Symptoms']
-        });
-      }, 1000);
-    } else if (!pdfData.relevantSymptoms) {
-      if (option === 'All Recent Symptoms') {
-        setPdfData(prev => ({ ...prev, relevantSymptoms: [] }));
-        generatePDF();
-      } else {
-        // In a real app, you'd show a list of symptoms to select from
+  const generatePDFFromSymptoms = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/symptoms/logs', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const logs = data.symptomLogs || [];
+        
+        if (logs.length === 0) {
+          addMessage({
+            type: 'ai',
+            content: "You haven't logged any symptoms yet. Please log some symptoms first!",
+            options: ['Log a Symptom', 'Back to Menu']
+          });
+          return;
+        }
+
+        // Generate report using stored symptoms
+        const report = generateReportFromStoredSymptoms(logs, pdfData.appointmentReason);
+        
+        setCurrentPDFContent(report);
         setTimeout(() => {
           addMessage({
             type: 'ai',
-            content: "Please type the symptoms you'd like to include (comma-separated):"
+            content: `Here's your GP appointment report:\n\n${report}\n\nWould you like to download this as a PDF?`,
+            options: ['Download PDF', 'Edit Report', 'Back to Menu']
           });
         }, 1000);
+      } else {
+        addMessage({
+          type: 'ai',
+          content: "❌ Failed to fetch symptoms. Please try again.",
+          options: ['Try Again', 'Back to Menu']
+        });
       }
-    } else if (pdfData.relevantSymptoms && pdfData.relevantSymptoms.length === 0) {
-      // Handle specific symptom selection
-      const symptoms = option.split(',').map(s => s.trim());
-      setPdfData(prev => ({ ...prev, relevantSymptoms: symptoms }));
-      generatePDF();
+    } catch (error) {
+      addMessage({
+        type: 'ai',
+        content: "❌ Network error. Please try again.",
+        options: ['Try Again', 'Back to Menu']
+      });
+    }
+  };
+
+  const generateReportFromStoredSymptoms = (logs: any[], appointmentReason: string) => {
+    let report = `# GP Appointment Report
+**Generated:** ${new Date().toLocaleDateString('en-GB')} ${new Date().toLocaleTimeString('en-GB')}
+
+## Appointment Information
+- **Reason for Visit:** ${appointmentReason}
+
+## Symptom Summary
+`;
+
+    logs.slice(0, 5).forEach((log, index) => {
+      const date = new Date(log.created_at).toLocaleDateString('en-GB');
+      const severity = log.severity || 'Unknown';
+      
+      report += `
+### Symptom ${index + 1}: ${log.symptom_description}
+- **Date:** ${date}
+- **Severity:** ${severity}/10
+
+**Clinical Assessment:**
+`;
+      
+      // Add SOCRATES data if available
+      if (log.symptom_data?.socrates) {
+        const socrates = log.symptom_data.socrates;
+        if (socrates.site) report += `- Site: ${socrates.site}\n`;
+        if (socrates.onset) report += `- Onset: ${socrates.onset}\n`;
+        if (socrates.character) report += `- Character: ${socrates.character}\n`;
+        if (socrates.radiation) report += `- Radiation: ${socrates.radiation}\n`;
+        if (socrates.associations) report += `- Associations: ${socrates.associations}\n`;
+        if (socrates.timeCourse) report += `- Time Course: ${socrates.timeCourse}\n`;
+        if (socrates.exacerbatingFactors) report += `- Exacerbating Factors: ${socrates.exacerbatingFactors}\n`;
+        if (socrates.severity) report += `- Severity: ${socrates.severity}/10\n`;
+        if (socrates.additionalContext) report += `- Additional Context: ${socrates.additionalContext}\n`;
+      }
+    });
+
+    report += `
+## Recommendations for GP
+- Review detailed symptom assessments above
+- Consider severity levels and impact on daily activities
+- Evaluate for any red flag symptoms requiring immediate attention
+- Assess need for further investigations or specialist referral
+
+---
+*Report generated by Sympli Health Companion*
+*For clinical use - please verify all information with the patient*
+`;
+
+    return report;
+  };
+
+  const handlePDFGeneration = (option: string) => {
+    if (!pdfData.appointmentReason) {
+      setPdfData(prev => ({ ...prev, appointmentReason: option }));
+      generatePDFFromSymptoms();
     }
   };
 
@@ -447,6 +760,9 @@ export default function SymptomChat() {
     setSymptomData({});
     setPdfData({});
     setCurrentPDFContent('');
+    setSocratesStep('');
+    setFollowUpQuestions([]);
+    setCurrentFollowUpIndex(0);
     addMessage({
       type: 'ai',
       content: "How can I help you today?",
@@ -488,49 +804,6 @@ export default function SymptomChat() {
     }
 
     setIsLoading(false);
-  };
-
-  const saveSymptom = async () => {
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch('/api/symptoms/log', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          symptomDescription: symptomData.description,
-          severity: symptomData.severity || 'Unknown',
-          duration: symptomData.isNew ? 'New' : 'Ongoing',
-          location: symptomData.location || 'General',
-          triggers: symptomData.triggers || 'None',
-          notes: symptomData.notes || ''
-        })
-      });
-
-      if (response.ok) {
-        addMessage({
-          type: 'ai',
-          content: "✅ Symptom logged successfully! It's been added to your timeline.",
-          options: ['Log Another Symptom', 'View Timeline', 'Back to Menu']
-        });
-        setCurrentFlow('idle');
-        setSymptomData({});
-      } else {
-        addMessage({
-          type: 'ai',
-          content: "❌ Failed to save symptom. Please try again.",
-          options: ['Try Again', 'Back to Menu']
-        });
-      }
-    } catch (error) {
-      addMessage({
-        type: 'ai',
-        content: "❌ Network error. Please try again.",
-        options: ['Try Again', 'Back to Menu']
-      });
-    }
   };
 
   return (

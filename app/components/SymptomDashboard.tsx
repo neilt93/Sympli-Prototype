@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Severity } from '../types/symptoms';
 import SymptomLogForm from './SymptomLogForm';
+import NewSymptomLogFlow from './NewSymptomLogFlow';
 import SymptomOverview from './SymptomOverview';
 import SymptomTimeline from './SymptomTimeline';
 
@@ -15,6 +16,7 @@ const SymptomDashboard: React.FC<SymptomDashboardProps> = ({ token }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'log' | 'timeline'>('overview');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [quickLogVisible, setQuickLogVisible] = useState(false);
+  const [useNewFlow, setUseNewFlow] = useState(true); // Toggle between old and new flow
 
   const handleSymptomLogged = () => {
     setRefreshTrigger(prev => prev + 1);
@@ -50,7 +52,7 @@ const SymptomDashboard: React.FC<SymptomDashboardProps> = ({ token }) => {
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
               <span className="mr-2">➕</span>
-              Quick Log
+              Log New Symptom
             </button>
             <button
               onClick={() => setActiveTab('overview')}
@@ -58,6 +60,13 @@ const SymptomDashboard: React.FC<SymptomDashboardProps> = ({ token }) => {
             >
               <span className="mr-2">📊</span>
               View Overview
+            </button>
+            <button
+              onClick={() => setUseNewFlow(!useNewFlow)}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            >
+              <span className="mr-2">🔄</span>
+              {useNewFlow ? 'Use Old Flow' : 'Use New Flow'}
             </button>
           </div>
         </div>
@@ -109,10 +118,18 @@ const SymptomDashboard: React.FC<SymptomDashboardProps> = ({ token }) => {
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <SymptomLogForm 
-                  token={token} 
-                  onSymptomLogged={handleSymptomLogged}
-                />
+                {useNewFlow ? (
+                  <NewSymptomLogFlow 
+                    token={token} 
+                    onComplete={handleSymptomLogged}
+                    onCancel={() => setActiveTab('overview')}
+                  />
+                ) : (
+                  <SymptomLogForm 
+                    token={token} 
+                    onSymptomLogged={handleSymptomLogged}
+                  />
+                )}
               </motion.div>
             )}
             {activeTab === 'timeline' && (
@@ -141,7 +158,7 @@ const SymptomDashboard: React.FC<SymptomDashboardProps> = ({ token }) => {
             exit={{ opacity: 0, scale: 0.8 }}
             onClick={handleQuickLog}
             className="fixed bottom-6 right-6 w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center text-2xl transition-all duration-200 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-blue-300"
-            aria-label="Quick log symptom"
+            aria-label="Log new symptom"
           >
             ➕
           </motion.button>

@@ -16,6 +16,20 @@ export interface SymptomLog {
   flareId?: string;
   createdAt: Date;
   updatedAt: Date;
+  // New fields for enhanced logging
+  symptomType?: 'new' | 'ongoing';
+  socratesData?: {
+    site: string;
+    onset: string;
+    character: string;
+    radiation: string;
+    associations: string;
+    timeCourse: string;
+    exacerbatingFactors: string;
+    severity: string;
+    additionalContext: string;
+  };
+  reportData?: any;
 }
 
 export interface SymptomOverviewRow {

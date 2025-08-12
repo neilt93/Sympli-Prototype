@@ -168,12 +168,6 @@ export default function Home() {
           </div>
           <div className="flex items-center space-x-4">
             <button
-              onClick={() => router.push('/symptoms')}
-              className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition-colors"
-            >
-              Symptoms
-            </button>
-            <button
               onClick={() => router.push('/settings')}
               className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition-colors"
             >

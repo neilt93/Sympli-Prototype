@@ -59,12 +59,13 @@ export async function GET(request: NextRequest) {
     }).length || 0;
 
     const severityCounts = symptomLogs?.reduce((acc, log) => {
-      acc[log.severity] = (acc[log.severity] || 0) + 1;
+      const severity = log.symptom_data?.socrates?.severity || 'Unknown';
+      acc[severity] = (acc[severity] || 0) + 1;
       return acc;
     }, {} as Record<string, number>) || {};
 
     const commonSymptoms = symptomLogs?.reduce((acc, log) => {
-      const desc = log.symptom_description.toLowerCase();
+      const desc = (log.symptom_data?.symptom || 'Unknown').toLowerCase();
       acc[desc] = (acc[desc] || 0) + 1;
       return acc;
     }, {} as Record<string, number>) || {};

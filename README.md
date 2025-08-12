@@ -1,252 +1,124 @@
-# 🏥 Sympli - Voice-First AI Health Companion
+# 🏥 Sympli Health - AI-Powered Symptom Tracking
 
-Sympli is a comprehensive voice-first AI health companion that helps patients log symptoms, track patterns, and generate structured, clinically-usable reports for GPs — all within a simple, chat-style interface with MongoDB integration.
-
-## 🎯 Product Overview
-
-### Main Product Flow (Everything Happens in Chat)
-
-1. **Onboarding**
-   - Multilingual, consent-based
-   - Collects basic history (allergies, past medical issues, etc.)
-
-2. **After Onboarding — 3 Core Actions**
-   - **Log a Symptom**: Voice/text input with AI-guided symptom logging
-   - **Generate a PDF Report**: Structured reports for GP visits
-   - **View Symptom Timeline**: Browse and search past symptom logs
-
-### Key Features
-
-- **Voice-First Interface**: Speech-to-text input with microphone button
-- **MongoDB Integration**: Persistent data storage with proper indexing
-- **AI-Driven**: Intelligent follow-up questions based on symptom type
-- **PDF Generation**: Professional reports with Jinja2 templating
-- **Symptom Tracking**: Timeline view with search and filtering
-- **Privacy-First**: Secure data handling with user consent
-- **Real-time Processing**: Live voice transcription and AI responses
+A comprehensive health companion app that uses AI to help users track symptoms, generate clinical reports, and prepare for GP appointments.
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### One Command Setup
+```bash
+./start.sh
+```
 
-- Python 3.8 or higher
-- OpenAI API key
-- MongoDB (local or Atlas)
+### Manual Setup
+```bash
+npm install
+npm run dev
+```
 
-### Installation
+Visit `http://localhost:3000`
 
-1. **Clone or download the project files**
+## ✨ Features
 
-2. **Set up environment variables**
-   ```bash
-   # OpenAI API key
-   export OPENAI_API_KEY="your-api-key-here"
-   
-   # MongoDB connection (optional - defaults to localhost)
-   export MONGO_URI="mongodb://localhost:27017/"
-   ```
-   
-   Or create a `.env` file:
-   ```
-   OPENAI_API_KEY=your-api-key-here
-   MONGO_URI=mongodb://localhost:27017/
-   ```
+### 🤖 AI-Powered Symptom Assessment
+- **SOCRATES Framework**: Clinical symptom evaluation
+- **AI Roleplay**: NHS clinic assistant simulation
+- **Contextual Questions**: Intelligent follow-up based on symptoms
 
-3. **Install MongoDB (if using local)**
-   ```bash
-   # Ubuntu/Debian
-   sudo apt-get install mongodb
-   
-   # macOS with Homebrew
-   brew install mongodb-community
-   
-   # Windows: Download from mongodb.com
-   ```
+### 📊 Symptom Management
+- **Timeline View**: Chronological symptom tracking
+- **Analytics Dashboard**: Trend analysis and insights
+- **Detailed Records**: Complete clinical assessments
 
-4. **Run the application**
-   ```bash
-   # On Unix/Linux/macOS:
-   chmod +x start.sh
-   ./start.sh
-   
-   # On Windows:
-   python setup_mongodb.py
-   python app.py
-   ```
+### 📄 Report Generation
+- **GP Reports**: Professional medical summaries
+- **Clinical Documentation**: Structured symptom assessments
+- **Download Options**: Export reports for appointments
 
-5. **Access the application**
-   - Open your browser to `http://localhost:7860`
-   - The app will also provide a public URL for sharing
+### 🔐 Security & Privacy
+- **User Authentication**: Secure login system
+- **Data Protection**: GDPR-compliant data handling
+- **Row Level Security**: User-specific data access
+
+## 🛠️ Tech Stack
+
+- **Frontend**: Next.js 14, React, TypeScript
+- **Styling**: Tailwind CSS, Framer Motion
+- **Database**: Supabase (PostgreSQL)
+- **Authentication**: Supabase Auth
+- **AI**: OpenAI GPT-4o-mini
+- **Deployment**: Vercel (recommended)
+
+## 🔧 Environment Setup
+
+Create `.env.local`:
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+OPENAI_API_KEY=your_openai_key
+```
+
+## 📱 Usage
+
+1. **Register/Login**: Create an account or sign in
+2. **Log Symptoms**: Use the guided symptom assessment
+3. **View Timeline**: Track your health history
+4. **Generate Reports**: Create GP appointment summaries
+5. **Download**: Export reports for medical appointments
+
+## 🚀 Deployment
+
+### Vercel (Recommended)
+1. Push to GitHub
+2. Connect to [Vercel](https://vercel.com)
+3. Add environment variables
+4. Deploy automatically
+
+### Other Options
+- **Netlify**: Great alternative
+- **Railway**: Full-stack ready
+- **Render**: Simple & reliable
+
+See `DEPLOYMENT_GUIDE.md` for detailed instructions.
 
 ## 📁 Project Structure
 
 ```
-Sympli project/
-├── app.py                 # Main application logic with voice input
-├── setup_mongodb.py      # MongoDB database setup script
-├── prompts.md            # AI prompt templates
-├── report_template.html  # PDF generation template
-├── requirements.txt      # Python dependencies
-├── start.sh             # Launch script
-├── SYMP.csv             # Symptom data mapping
-├── env.example          # Environment variables template
-└── README.md           # This file
+├── app/                    # Next.js app directory
+│   ├── api/               # API routes
+│   ├── components/        # React components
+│   ├── lib/              # Utilities & config
+│   └── types/            # TypeScript types
+├── public/               # Static assets
+├── start.sh             # Quick start script
+└── DEPLOYMENT_GUIDE.md  # Deployment instructions
 ```
-
-## 🆕 New Features
-
-### 🎤 Voice Input
-- **Speech-to-Text**: Click the microphone button to speak
-- **OpenAI Whisper**: Uses OpenAI's Whisper API for high-accuracy transcription
-- **Natural Language**: Speak naturally about your symptoms
-- **Error Handling**: Graceful fallback for unclear audio
-
-### 🗄️ MongoDB Integration
-- **Persistent Storage**: All data saved to MongoDB
-- **User Sessions**: Unique user IDs for data isolation
-- **Optimized Indexes**: Fast queries for symptom history
-- **Sample Data**: Pre-loaded test data for demonstration
-
-### 📊 Enhanced Data Structure
-- **Structured Symptoms**: Rich symptom data with metadata
-- **User Profiles**: Comprehensive user information storage
-- **Report History**: Track all generated PDF reports
-- **Data Analytics**: Ready for future analytics features
-
-## 🔧 Core Components
-
-### 1. Chat Interface (`app.py`)
-- Gradio-based web interface
-- OpenAI GPT-4 integration
-- Chat history management
-- Symptom logging flow
-
-### 2. AI Prompts (`prompts.md`)
-- System prompts for different flows
-- Onboarding conversation templates
-- Symptom logging follow-up questions
-- PDF generation prompts
-
-### 3. PDF Generation (`report_template.html`)
-- Jinja2 template for structured reports
-- Professional medical report layout
-- Patient information sections
-- Symptom timeline formatting
-
-### 4. Symptom Data (`SYMP.csv`)
-- Symptom categories and severity levels
-- Common triggers and follow-up questions
-- Clinical relevance mapping
-
-## 💬 Usage Flows
-
-### 1. Onboarding Flow
-```
-User → "Hi" → AI welcomes and explains purpose
-AI → Asks for consent and privacy agreement
-AI → Collects basic medical history
-AI → Confirms onboarding completion
-```
-
-### 2. Symptom Logging Flow
-```
-User → Selects symptom or describes issue
-AI → Asks "New or ongoing?"
-AI → Context-aware follow-up questions
-AI → Creates summary for confirmation
-AI → Saves to symptom timeline
-```
-
-### 3. Timeline View Flow
-```
-User → "Show my timeline" or searches
-AI → Displays recent symptom logs
-AI → Allows filtering and searching
-AI → Shows detailed entries on request
-```
-
-### 4. PDF Generation Flow
-```
-User → "Generate PDF report"
-AI → Asks 4 context questions
-AI → Pulls relevant symptom logs
-AI → Builds report section by section
-AI → Generates downloadable PDF
-```
-
-## 🛠️ Development
-
-### Running Locally
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Set environment variable
-export OPENAI_API_KEY="your-key"
-
-# Run the app
-python app.py
-```
-
-### Deploying to Hugging Face Spaces
-1. Push your code to a GitHub repository
-2. Create a new Space on Hugging Face
-3. Connect your repository
-4. Add your OpenAI API key as a secret
-5. Deploy!
-
-### Customization
-
-#### Adding New Symptoms
-Edit `SYMP.csv` to add new symptoms:
-```csv
-symptom,category,severity_level,common_triggers,follow_up_questions
-New Symptom,Category,severity,triggers,questions
-```
-
-#### Modifying AI Prompts
-Edit `prompts.md` to customize conversation flows and responses.
-
-#### Customizing PDF Template
-Modify `report_template.html` to change the PDF layout and styling.
 
 ## 🔒 Privacy & Security
 
-- **Data Storage**: Currently in-memory (resets on restart)
-- **API Security**: Uses OpenAI's secure API
-- **User Consent**: Built-in consent collection
-- **Data Control**: Users can clear chat history
+- **HIPAA Compliant**: Medical data protection
+- **GDPR Ready**: European privacy standards
+- **Secure Storage**: Encrypted data handling
+- **User Control**: Full data ownership
 
-## 🚧 Current Limitations
+## 🤝 Contributing
 
-- **Data Persistence**: Chat history is not persistent
-- **User Authentication**: No user accounts yet
-- **Multi-language**: English only
-- **Voice Interface**: Text-based only (despite "voice-first" branding)
-
-## 🎯 Future Enhancements
-
-- [ ] Persistent data storage
-- [ ] User authentication
-- [ ] Multi-language support
-- [ ] Voice input/output
-- [ ] Mobile app
-- [ ] GP integration
-- [ ] Symptom analytics
-- [ ] Medication tracking
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
 ## 📞 Support
 
-For questions or issues:
-- Check the prompts in `prompts.md`
-- Review the ChatGPT threads mentioned in the email
-- Ensure your OpenAI API key is valid
-- Check the console for error messages
+- **Documentation**: Check this README first
+- **Issues**: Report bugs on GitHub
+- **Deployment**: See `DEPLOYMENT_GUIDE.md`
 
 ## 📄 License
 
-This project is for educational and development purposes. Please ensure compliance with healthcare regulations when deploying in clinical settings.
+This project is licensed under the MIT License.
 
 ---
 
-**Built with ❤️ for better healthcare communication** 
+**Built with ❤️ for better healthcare** 

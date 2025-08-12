@@ -1,55 +1,43 @@
 #!/bin/bash
 
-# Sympli AI Health Companion - Launch Script
-
-echo "🏥 Starting Sympli AI Health Companion..."
-
-# Check if Python is installed
-if ! command -v python3 &> /dev/null; then
-    echo "❌ Python 3 is not installed. Please install Python 3.8 or higher."
-    exit 1
-fi
-
-# Check if virtual environment exists
-if [ ! -d "venv" ]; then
-    echo "📦 Creating virtual environment..."
-    python3 -m venv venv
-fi
-
-# Activate virtual environment
-echo "🔧 Activating virtual environment..."
-source venv/bin/activate
-
-# Install dependencies
-echo "📚 Installing dependencies..."
-pip install -r requirements.txt
-
-# Check for required environment variables
-if [ -z "$OPENAI_API_KEY" ]; then
-    echo "⚠️  Warning: OPENAI_API_KEY environment variable not set."
-    echo "   Please set your OpenAI API key:"
-    echo "   export OPENAI_API_KEY='your-api-key-here'"
-    echo ""
-    echo "   Or create a .env file with:"
-    echo "   OPENAI_API_KEY=your-api-key-here"
-fi
-
-# Check for MongoDB connection
-if [ -z "$MONGO_URI" ]; then
-    echo "⚠️  Warning: MONGO_URI environment variable not set."
-    echo "   Using default local MongoDB: mongodb://localhost:27017/"
-    echo "   To use MongoDB Atlas, set:"
-    echo "   export MONGO_URI='mongodb+srv://username:password@cluster.mongodb.net/'"
-fi
-
-# Setup MongoDB (optional)
-echo "🗄️  Setting up MongoDB..."
-python setup_mongodb.py
-
-# Launch the application
-echo "🚀 Launching Sympli..."
-echo "   The app will be available at: http://localhost:7860"
-echo "   Press Ctrl+C to stop the server"
+echo "🚀 Starting Sympli Health..."
 echo ""
 
-python app.py 
+# Check if node_modules exists
+if [ ! -d "node_modules" ]; then
+    echo "📦 Installing dependencies..."
+    npm install
+fi
+
+# Check if .env.local exists
+if [ ! -f ".env.local" ]; then
+    echo "⚠️  Warning: .env.local not found!"
+    echo "   Create it with your Supabase and OpenAI keys:"
+    echo ""
+    echo "   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url"
+    echo "   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key"
+    echo "   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key"
+    echo "   OPENAI_API_KEY=your_openai_key"
+    echo ""
+    echo "   Then run this script again."
+    echo ""
+    read -p "Continue anyway? (y/n): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
+echo "🌐 Starting development server..."
+echo "   Local: http://localhost:3000"
+echo "   Network: http://$(hostname -I | awk '{print $1}'):3000"
+echo ""
+echo "📱 To deploy and share:"
+echo "   1. Push to GitHub: git push origin main"
+echo "   2. Deploy on Vercel: https://vercel.com"
+echo "   3. Share the URL!"
+echo ""
+echo "Press Ctrl+C to stop"
+echo ""
+
+npm run dev 

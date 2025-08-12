@@ -36,19 +36,23 @@ export async function POST(request: NextRequest) {
 
     console.log('📝 Logging symptom for user:', user.email);
 
-    // Insert symptom log into database
+    // Create symptom data in the correct format for the database schema
+    const symptomLogData = {
+      user_id: user.id,
+      symptom_data: {
+        symptom: body.symptomData?.symptom,
+        type: body.symptomData?.type,
+        description: body.symptomData?.description,
+        socrates: body.socratesData || {},
+        report: body.reportData || {},
+        created_at: new Date().toISOString()
+      },
+      data_retention_until: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
+    };
+
     const { data: symptomLog, error: insertError } = await supabaseService
       .from('symptom_logs')
-      .insert({
-        user_id: user.id,
-        symptom_description: body.symptomDescription,
-        severity: body.severity,
-        duration: body.duration,
-        location: body.location,
-        triggers: body.triggers,
-        notes: body.notes,
-        data_retention_until: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
-      })
+      .insert(symptomLogData)
       .select()
       .single();
 
