@@ -4,84 +4,90 @@ A comprehensive health companion app that uses AI to help users track symptoms, 
 
 ## 🚀 Quick Start
 
-### One Command Setup
+### Prerequisites
+- Node.js 18+ 
+- npm or yarn
+- Supabase account
+- OpenAI API key
+
+### 1. Clone & Install
 ```bash
-./start.sh
+git clone <your-repo-url>
+cd sympli-health
+npm install
 ```
 
-### Manual Setup
+### 2. Environment Setup
+Create `.env.local` in the project root:
+```env
+# Supabase (get from supabase.com → Settings → API)
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# OpenAI (get from platform.openai.com)
+OPENAI_API_KEY=your_openai_key
+```
+
+### 3. Database Setup
+Run this SQL in your Supabase SQL editor:
+```sql
+-- Create symptom_logs table
+CREATE TABLE symptom_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  symptom_data JSONB NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  data_retention_until TIMESTAMP WITH TIME ZONE
+);
+
+-- Enable RLS
+ALTER TABLE symptom_logs ENABLE ROW LEVEL SECURITY;
+
+-- Create policy
+CREATE POLICY "Users can only access their own symptom logs" 
+ON symptom_logs FOR ALL 
+USING (auth.uid() = user_id);
+```
+
+### 4. Run the App
 ```bash
-npm install
+# Development
 npm run dev
+
+# Production build
+npm run build
+npm start
 ```
 
 Visit `http://localhost:3000`
 
-## ✨ Features
+## 🛠️ Available Commands
 
-### 🤖 AI-Powered Symptom Assessment
-- **SOCRATES Framework**: Clinical symptom evaluation
-- **AI Roleplay**: NHS clinic assistant simulation
-- **Contextual Questions**: Intelligent follow-up based on symptoms
+```bash
+# Development
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run start        # Start production server
+npm run lint         # Run ESLint
 
-### 📊 Symptom Management
-- **Timeline View**: Chronological symptom tracking
-- **Analytics Dashboard**: Trend analysis and insights
-- **Detailed Records**: Complete clinical assessments
-
-### 📄 Report Generation
-- **GP Reports**: Professional medical summaries
-- **Clinical Documentation**: Structured symptom assessments
-- **Download Options**: Export reports for appointments
-
-### 🔐 Security & Privacy
-- **User Authentication**: Secure login system
-- **Data Protection**: GDPR-compliant data handling
-- **Row Level Security**: User-specific data access
-
-## 🛠️ Tech Stack
-
-- **Frontend**: Next.js 14, React, TypeScript
-- **Styling**: Tailwind CSS, Framer Motion
-- **Database**: Supabase (PostgreSQL)
-- **Authentication**: Supabase Auth
-- **AI**: OpenAI GPT-4o-mini
-- **Deployment**: Vercel (recommended)
-
-## 🔧 Environment Setup
-
-Create `.env.local`:
-```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-OPENAI_API_KEY=your_openai_key
+# Database (if using backend)
+cd backend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python start_backend.py
 ```
 
-## 📱 Usage
+## 📱 Features
 
-1. **Register/Login**: Create an account or sign in
-2. **Log Symptoms**: Use the guided symptom assessment
-3. **View Timeline**: Track your health history
-4. **Generate Reports**: Create GP appointment summaries
-5. **Download**: Export reports for medical appointments
+- **AI Symptom Assessment**: SOCRATES framework with AI follow-up questions
+- **Symptom Timeline**: Track and view your health history
+- **GP Report Generation**: Create professional medical summaries
+- **User Authentication**: Secure login with Supabase Auth
+- **Data Privacy**: HIPAA-compliant data handling
 
-## 🚀 Deployment
-
-### Vercel (Recommended)
-1. Push to GitHub
-2. Connect to [Vercel](https://vercel.com)
-3. Add environment variables
-4. Deploy automatically
-
-### Other Options
-- **Netlify**: Great alternative
-- **Railway**: Full-stack ready
-- **Render**: Simple & reliable
-
-See `DEPLOYMENT_GUIDE.md` for detailed instructions.
-
-## 📁 Project Structure
+## 🏗️ Project Structure
 
 ```
 ├── app/                    # Next.js app directory
@@ -89,35 +95,28 @@ See `DEPLOYMENT_GUIDE.md` for detailed instructions.
 │   ├── components/        # React components
 │   ├── lib/              # Utilities & config
 │   └── types/            # TypeScript types
+├── backend/              # Python backend (optional)
 ├── public/               # Static assets
-├── start.sh             # Quick start script
-└── DEPLOYMENT_GUIDE.md  # Deployment instructions
+└── .env.local           # Environment variables
 ```
 
-## 🔒 Privacy & Security
+## 🔧 Troubleshooting
 
-- **HIPAA Compliant**: Medical data protection
-- **GDPR Ready**: European privacy standards
-- **Secure Storage**: Encrypted data handling
-- **User Control**: Full data ownership
+### Common Issues:
+- **"Module not found"**: Run `npm install`
+- **"Environment variables missing"**: Check `.env.local` exists
+- **"Database connection failed"**: Verify Supabase credentials
+- **"OpenAI API error"**: Check your API key is valid
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## 📞 Support
-
-- **Documentation**: Check this README first
-- **Issues**: Report bugs on GitHub
-- **Deployment**: See `DEPLOYMENT_GUIDE.md`
+### Development Tips:
+- Use `npm run dev` for hot reloading
+- Check browser console for errors
+- Verify environment variables are loaded
+- Test API endpoints with Postman/Thunder Client
 
 ## 📄 License
 
-This project is licensed under the MIT License.
+MIT License - see LICENSE file for details.
 
 ---
 

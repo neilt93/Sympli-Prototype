@@ -30,12 +30,6 @@ fi
 
 echo "🌐 Starting development server..."
 echo "   Local: http://localhost:3000"
-echo "   Network: http://$(hostname -I | awk '{print $1}'):3000"
-echo ""
-echo "📱 To deploy and share:"
-echo "   1. Push to GitHub: git push origin main"
-echo "   2. Deploy on Vercel: https://vercel.com"
-echo "   3. Share the URL!"
 echo ""
 echo "Press Ctrl+C to stop"
 echo ""
