@@ -23,6 +23,13 @@ export default function CaregiverConsent({ data, onUpdate }: CaregiverConsentPro
     onUpdate(updatedData);
   };
 
+  // Check if all required fields are completed
+  const isComplete = localData.patientFullName && 
+                    localData.relationship && 
+                    localData.hasConsent && 
+                    localData.takesResponsibility && 
+                    localData.patientAwareOfDataSharing;
+
   const relationshipOptions = [
     'Spouse/Partner',
     'Parent',
@@ -61,7 +68,7 @@ export default function CaregiverConsent({ data, onUpdate }: CaregiverConsentPro
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Patient's Full Name
+              Patient's Full Name <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -74,7 +81,7 @@ export default function CaregiverConsent({ data, onUpdate }: CaregiverConsentPro
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Your Relationship
+              Your Relationship <span className="text-red-500">*</span>
             </label>
             <select
               value={localData.relationship}
@@ -214,10 +221,26 @@ export default function CaregiverConsent({ data, onUpdate }: CaregiverConsentPro
         </div>
       </div>
 
+      {/* Instructions */}
       <div className="text-center pt-4">
-        <button className="px-8 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium">
-          Begin Logging as a Caregiver
-        </button>
+        {isComplete ? (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center justify-center">
+              <svg className="w-5 h-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+              <p className="text-sm text-green-700 font-medium">
+                All required fields completed! You can continue.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-sm text-blue-700">
+              Please complete all required fields marked with <span className="text-red-500">*</span> to continue
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

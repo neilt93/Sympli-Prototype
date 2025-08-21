@@ -8,9 +8,15 @@ import RegisterForm from '../components/RegisterForm'
 export default function AuthContainer() {
   const [isLogin, setIsLogin] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
+  const [hasAuthenticated, setHasAuthenticated] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
+    // Skip if we've already authenticated in this session
+    if (hasAuthenticated) {
+      return
+    }
+
     // Check if user is already authenticated
     const token = localStorage.getItem('authToken')
     if (token) {
@@ -25,10 +31,15 @@ export default function AuthContainer() {
       .then(response => {
         if (response.ok) {
           response.json().then(userData => {
+            console.log('🔍 Auth page - User data:', userData);
+            console.log('🔍 Auth page - Onboarding complete:', userData.user?.onboarding_complete);
+            setHasAuthenticated(true)
             // Check if onboarding is complete
-            if (userData.onboarding_complete) {
-              router.push('/')
+            if (userData.user?.onboarding_complete) {
+              console.log('✅ Auth page - Redirecting to symptoms');
+              router.push('/symptoms')
             } else {
+              console.log('⚠️ Auth page - Redirecting to onboarding');
               router.push('/onboarding')
             }
           })
@@ -44,7 +55,7 @@ export default function AuthContainer() {
     } else {
       setIsLoading(false)
     }
-  }, [router])
+  }, []) // Remove router dependency
 
   if (isLoading) {
     return (
@@ -56,6 +67,19 @@ export default function AuthContainer() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      {/* Back to Home Button */}
+      <div className="max-w-md mx-auto mb-6">
+        <button
+          onClick={() => router.push('/')}
+          className="flex items-center text-gray-600 hover:text-gray-900 transition-colors px-3 py-2 rounded-lg hover:bg-gray-100"
+        >
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Home
+        </button>
+      </div>
+      
       <div className="max-w-md mx-auto">
         {isLogin ? (
           <LoginForm 
@@ -63,10 +87,11 @@ export default function AuthContainer() {
               // Store user data and check onboarding status
               localStorage.setItem('authToken', token)
               localStorage.setItem('userData', JSON.stringify(user))
+              setHasAuthenticated(true)
               
               // Redirect based on onboarding completion
               if (user.onboarding_complete) {
-                router.push('/')
+                router.push('/symptoms')
               } else {
                 router.push('/onboarding')
               }
@@ -79,6 +104,7 @@ export default function AuthContainer() {
               // Store user data and check onboarding status
               localStorage.setItem('authToken', token)
               localStorage.setItem('userData', JSON.stringify(user))
+              setHasAuthenticated(true)
               
               // New users should always go to onboarding
               router.push('/onboarding')

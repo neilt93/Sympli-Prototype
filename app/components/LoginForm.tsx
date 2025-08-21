@@ -60,10 +60,8 @@ export default function LoginForm({ onLoginSuccess, onSwitchToRegister }: LoginF
         localStorage.setItem('authToken', data.session.access_token)
         localStorage.setItem('userData', JSON.stringify(data.user))
         
-        // Call success callback to redirect to app
-        setTimeout(() => {
-          onLoginSuccess(data.session.access_token, data.user)
-        }, 1000)
+        // Call success callback to redirect to app immediately
+        onLoginSuccess(data.session.access_token, data.user)
       } else {
         // Handle email verification requirement
         if (data.requiresEmailVerification) {

@@ -30,67 +30,66 @@ function generateSymptomReport(symptomData: any, socratesData: any): string {
     minute: '2-digit'
   });
 
+  // Ensure we have valid data
+  const safeSymptomData = symptomData || {};
+  const safeSocratesData = socratesData || {};
+
   let report = `SYMPTOM REPORT\n`;
   report += `Generated: ${formattedDate}\n`;
   report += `=====================================\n\n`;
 
   // Basic symptom information
   report += `PRIMARY SYMPTOM\n`;
-  report += `Symptom: ${symptomData.symptom}\n`;
-  report += `Type: ${symptomData.type === 'new' ? 'New Symptom' : 'Ongoing Symptom'}\n`;
-  if (symptomData.description) {
-    report += `Description: ${symptomData.description}\n`;
+  report += `Symptom: ${safeSymptomData.symptom || 'Not specified'}\n`;
+  report += `Type: ${safeSymptomData.type === 'new' ? 'New Symptom' : 'Ongoing Symptom'}\n`;
+  if (safeSymptomData.description) {
+    report += `Description: ${safeSymptomData.description}\n`;
   }
   report += `\n`;
 
   // Socrates assessment
   report += `DETAILED ASSESSMENT (SOCRATES)\n`;
-  report += `Site: ${socratesData.site || 'Not specified'}\n`;
-  report += `Onset: ${socratesData.onset || 'Not specified'}\n`;
-  report += `Character: ${socratesData.character || 'Not specified'}\n`;
-  report += `Radiation: ${socratesData.radiation || 'Not specified'}\n`;
-  report += `Associations: ${socratesData.associations || 'Not specified'}\n`;
-  report += `Time Course: ${socratesData.timeCourse || 'Not specified'}\n`;
-  report += `Exacerbating Factors: ${socratesData.exacerbatingFactors || 'Not specified'}\n`;
-  report += `Severity: ${socratesData.severity || 'Not specified'}/10\n`;
+  report += `Site: ${safeSocratesData.site || 'Not specified'}\n`;
+  report += `Onset: ${safeSocratesData.onset || 'Not specified'}\n`;
+  report += `Character: ${safeSocratesData.character || 'Not specified'}\n`;
+  report += `Radiation: ${safeSocratesData.radiation || 'Not specified'}\n`;
+  report += `Associations: ${safeSocratesData.associations || 'Not specified'}\n`;
+  report += `Time Course: ${safeSocratesData.timeCourse || 'Not specified'}\n`;
+  report += `Exacerbating Factors: ${safeSocratesData.exacerbatingFactors || 'Not specified'}\n`;
+  report += `Severity: ${safeSocratesData.severity || 'Not specified'}/10\n`;
   report += `\n`;
 
   // Additional context
-  if (socratesData.additionalContext) {
+  if (safeSocratesData.additionalContext) {
     report += `ADDITIONAL CONTEXT\n`;
-    report += `${socratesData.additionalContext}\n`;
+    report += `${safeSocratesData.additionalContext}\n`;
     report += `\n`;
   }
 
   // Clinical summary
   report += `CLINICAL SUMMARY\n`;
-  report += `This ${symptomData.type} symptom of ${symptomData.symptom} was reported with a severity of ${socratesData.severity || 'unknown'}/10. `;
+  report += `This ${safeSymptomData.type || 'unknown'} symptom of ${safeSymptomData.symptom || 'unknown'} was reported with a severity of ${safeSocratesData.severity || 'unknown'}/10. `;
   
-  if (socratesData.onset) {
-    report += `The symptom began ${socratesData.onset}. `;
+  if (safeSocratesData.onset) {
+    report += `The symptom began ${safeSocratesData.onset}. `;
   }
   
-  if (socratesData.character) {
-    report += `It is described as ${socratesData.character}. `;
+  if (safeSocratesData.character) {
+    report += `It is described as ${safeSocratesData.character}. `;
   }
   
-  if (socratesData.timeCourse) {
-    report += `Over time, ${socratesData.timeCourse}. `;
+  if (safeSocratesData.timeCourse) {
+    report += `Over time, ${safeSocratesData.timeCourse}. `;
   }
   
-  if (socratesData.exacerbatingFactors) {
-    report += `Factors that affect the symptom include: ${socratesData.exacerbatingFactors}. `;
+  if (safeSocratesData.exacerbatingFactors) {
+    report += `Factors that affect the symptom include: ${safeSocratesData.exacerbatingFactors}. `;
   }
 
-  // Recommendations section
-  report += `\n\nRECOMMENDATIONS FOR CLINICIAN\n`;
-  report += `• Review the detailed Socrates assessment above\n`;
-  report += `• Consider severity level and impact on daily activities\n`;
-  report += `• Evaluate for any red flag symptoms\n`;
-  report += `• Assess need for further investigations or specialist referral\n`;
+  // Clinical recommendations removed as requested
   
   // Red flags section
-  const severity = parseInt(socratesData.severity) || 0;
+  const severity = parseInt(safeSocratesData.severity) || 0;
   if (severity >= 8) {
     report += `\n⚠️  HIGH SEVERITY ALERT: Patient reported severity ${severity}/10\n`;
   }

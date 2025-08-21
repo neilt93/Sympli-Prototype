@@ -36,15 +36,62 @@ export async function POST(request: NextRequest) {
 
     console.log('📝 Logging symptom for user:', user.email);
 
-    // Create symptom data in the correct format for the database schema
+    // Extract symptom data from the chat flow
+    const symptomData = body.symptomData;
+    const socratesData = body.socratesData || {};
+    const reportData = body.reportData || {};
+    
+    // Map symptom type to human-readable name
+    const symptomNameMap: Record<string, string> = {
+      'headache': 'Headache',
+      'fatigue': 'Fatigue',
+      'side_effect': 'Side Effect',
+      'pregnancy': 'Pregnancy Symptom',
+      'other': 'Other Symptom'
+    };
+    
+    // Extract severity from Socrates data or default to 5
+    let severityScale = 5;
+    if (socratesData.severity) {
+      const severityMatch = socratesData.severity.match(/(\d+)/);
+      if (severityMatch) {
+        severityScale = parseInt(severityMatch[1]);
+      }
+    }
+    
+    // Create symptom data in the enhanced format for the database schema
     const symptomLogData = {
       user_id: user.id,
+      symptom_type: symptomData.symptomType,
+      symptom_name: symptomNameMap[symptomData.symptomType] || 'Unknown Symptom',
+      is_new: symptomData.isNew === 'new',
+      severity_scale: severityScale,
+      description: symptomData.description,
+      location: socratesData.site,
+      onset_time: socratesData.onset,
+      character_description: socratesData.character,
+      radiation: socratesData.radiation,
+      associated_symptoms: socratesData.associations,
+      time_course: socratesData.timeCourse,
+      exacerbating_factors: socratesData.exacerbatingFactors,
+      functional_impact: reportData.functionalImpact,
+      emotional_impact: reportData.emotionalImpact,
+      triggers: reportData.triggers,
+      patterns: reportData.patterns,
+      treatment_response: reportData.treatmentResponse,
+      progress_description: reportData.progress,
+      additional_context: {
+        llmResponses: symptomData.llmResponses,
+        socratesData: socratesData,
+        reportData: reportData
+      },
       symptom_data: {
-        symptom: body.symptomData?.symptom,
-        type: body.symptomData?.type,
-        description: body.symptomData?.description,
-        socrates: body.socratesData || {},
-        report: body.reportData || {},
+        symptom: symptomData.symptomType,
+        type: symptomData.isNew,
+        description: symptomData.description,
+        socrates: socratesData,
+        report: reportData,
+        llmResponses: symptomData.llmResponses,
         created_at: new Date().toISOString()
       },
       data_retention_until: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days

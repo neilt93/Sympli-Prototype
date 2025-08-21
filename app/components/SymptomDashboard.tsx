@@ -7,13 +7,14 @@ import SymptomLogForm from './SymptomLogForm';
 import NewSymptomLogFlow from './NewSymptomLogFlow';
 import SymptomOverview from './SymptomOverview';
 import SymptomTimeline from './SymptomTimeline';
+import SymptomChat from './SymptomChat';
 
 interface SymptomDashboardProps {
   token: string;
 }
 
 const SymptomDashboard: React.FC<SymptomDashboardProps> = ({ token }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'log' | 'timeline'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'log' | 'timeline' | 'chat'>('overview');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [quickLogVisible, setQuickLogVisible] = useState(false);
   const [useNewFlow, setUseNewFlow] = useState(true); // Toggle between old and new flow
@@ -32,7 +33,8 @@ const SymptomDashboard: React.FC<SymptomDashboardProps> = ({ token }) => {
   const tabs = [
     { id: 'overview', label: 'Symptom Overview', icon: '📊' },
     { id: 'log', label: 'Log New Symptom', icon: '➕' },
-    { id: 'timeline', label: 'Timeline View', icon: '📅' }
+    { id: 'timeline', label: 'Timeline View', icon: '📅' },
+    { id: 'chat', label: 'AI Chat', icon: '💬' }
   ];
 
   return (
@@ -79,7 +81,7 @@ const SymptomDashboard: React.FC<SymptomDashboardProps> = ({ token }) => {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as 'overview' | 'log' | 'timeline')}
+                onClick={() => setActiveTab(tab.id as 'overview' | 'log' | 'timeline' | 'chat')}
                 className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600'
@@ -143,6 +145,17 @@ const SymptomDashboard: React.FC<SymptomDashboardProps> = ({ token }) => {
                 <SymptomTimeline 
                   token={token}
                 />
+              </motion.div>
+            )}
+            {activeTab === 'chat' && (
+              <motion.div
+                key="chat"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <SymptomChat />
               </motion.div>
             )}
           </AnimatePresence>

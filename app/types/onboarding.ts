@@ -2,7 +2,7 @@ export type UserRole = 'myself' | 'caregiver';
 
 export interface PersonalInformation {
   fullName: string;
-  phoneNumber: string;
+  dateOfBirth: string;
 }
 
 export interface MedicalInformation {

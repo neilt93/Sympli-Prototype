@@ -232,10 +232,10 @@ const SymptomOverview: React.FC<SymptomOverviewProps> = ({ token }) => {
                       {symptom.symptom}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(symptom.firstLogged)}
+                      {formatDate(symptom.firstLogged.toString())}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(symptom.mostRecent)}
+                      {formatDate(symptom.mostRecent.toString())}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {symptom.count}
@@ -323,7 +323,7 @@ const SymptomOverview: React.FC<SymptomOverviewProps> = ({ token }) => {
                 {data?.functionalImpact && (
                   <div className="mt-2 text-xs text-gray-500">
                     {data.functionalImpact.isUserEdited ? 'User edited' : 'AI generated'} • 
-                    Last updated: {formatDate(data.functionalImpact.lastUpdatedAt)}
+                    Last updated: {formatDate(data.functionalImpact.lastUpdatedAt.toString())}
                   </div>
                 )}
               </div>

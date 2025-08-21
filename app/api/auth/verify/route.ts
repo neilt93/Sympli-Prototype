@@ -61,6 +61,8 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('✅ User profile found:', profile.email);
+    console.log('🔍 Full profile data:', JSON.stringify(profile, null, 2));
+    console.log('🔍 Onboarding complete value:', profile.onboarding_complete);
 
     // Check if email is confirmed
     const isEmailConfirmed = user.email_confirmed_at !== null;

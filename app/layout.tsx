@@ -1,8 +1,9 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import { Providers } from './providers'
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -100,8 +101,10 @@ export default function RootLayout({
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" />
         <script src="https://accounts.google.com/gsi/client" async defer></script>
       </head>
-      <body className={inter.className}>
-        {children}
+      <body className={`${inter.variable} font-sans`}>
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   )

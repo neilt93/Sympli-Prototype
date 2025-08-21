@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     console.log('🔐 Registration API called');
     
     const body = await request.json();
-    const { fullName, email, password, bloodType, allergies, medications, emergencyContact } = body;
+    const { fullName, email, password } = body;
 
     console.log('📧 Registration data received:', { email, fullName, hasPassword: !!password });
 
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const existingAuthUser = existingAuthUsers.users.find(user => 
+    const existingAuthUser = existingAuthUsers.users.find((user: any) => 
       user.email?.toLowerCase() === normalizedEmail
     );
 
@@ -62,11 +62,7 @@ export async function POST(request: NextRequest) {
       password: password,
       options: {
         data: {
-          full_name: fullName,
-          blood_type: bloodType,
-          allergies: allergies,
-          medications: medications,
-          emergency_contact: emergencyContact
+          full_name: fullName
         }
       }
     });
@@ -90,23 +86,22 @@ export async function POST(request: NextRequest) {
     console.log('✅ User created in Supabase Auth:', authData.user.email);
     console.log('📧 Email verification required before login');
 
-    // Create user profile in public.users table
+    // Create user profile in public.users table (use upsert to handle existing records)
     console.log('📝 Creating user profile...');
     const { data: profileData, error: profileError } = await supabaseService
       .from('users')
-      .insert({
+      .upsert({
         id: authData.user.id,
         email: normalizedEmail,
         full_name: fullName,
         created_at: new Date().toISOString(),
         is_active: true,
         profile: JSON.stringify({
-          bloodType,
-          allergies,
-          medications,
-          emergencyContact
+          // Profile data will be populated during onboarding
         }),
         onboarding_complete: false
+      }, {
+        onConflict: 'id'
       })
       .select()
       .single();

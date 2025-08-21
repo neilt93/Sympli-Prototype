@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
+import UserNavigation from '../components/UserNavigation'
 
 interface UserData {
   fullName?: string
@@ -59,44 +60,82 @@ export default function SettingsPage() {
     }
 
     try {
-      // Load user data
-      const userDataStr = localStorage.getItem('userData')
-      if (userDataStr) {
-        setUserData(JSON.parse(userDataStr))
+      // Verify token with backend
+      const response = await fetch('/api/auth/verify', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        // Token is invalid, clear storage and redirect to auth
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('userData');
+        localStorage.removeItem('onboardingData');
+        router.push('/auth');
+        return;
       }
 
-      // Load onboarding data from MongoDB
+      // Token is valid, check if onboarding is complete
+      const userData = await response.json();
+      console.log('🔍 Settings page - User data received:', userData);
+      console.log('🔍 Settings page - Onboarding complete:', userData.user?.onboarding_complete);
+      
+      if (!userData.user?.onboarding_complete) {
+        // User hasn't completed onboarding, redirect to onboarding
+        console.log('⚠️ Settings page - Onboarding not complete, redirecting to onboarding');
+        router.push('/onboarding');
+        return;
+      }
+
       try {
-        const response = await fetch('/api/onboarding/get', {
-          headers: {
-            'Authorization': `Bearer ${token}`
+        // Load user data from API response
+        setUserData(userData.user)
+        
+        // Also update localStorage with the fresh data
+        localStorage.setItem('userData', JSON.stringify(userData.user))
+
+        // Load onboarding data from MongoDB
+        try {
+          const response = await fetch('/api/onboarding/get', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
+
+          if (response.ok) {
+            const onboardingData = await response.json()
+            setOnboardingData(onboardingData)
+            setEditData(onboardingData)
+          } else if (response.status === 404) {
+            // No onboarding data found, user hasn't completed onboarding
+            console.log('No onboarding data found for user')
+          } else {
+            console.error('Failed to fetch onboarding data:', response.status)
           }
-        })
+        } catch (fetchError) {
+          console.error('Error fetching onboarding data:', fetchError)
+          // Fallback to localStorage if API fails
+          const storedOnboarding = localStorage.getItem('onboardingData')
+          if (storedOnboarding) {
+            setOnboardingData(JSON.parse(storedOnboarding))
+            setEditData(JSON.parse(storedOnboarding))
+          }
+        }
 
-        if (response.ok) {
-          const onboardingData = await response.json()
-          setOnboardingData(onboardingData)
-          setEditData(onboardingData)
-        } else if (response.status === 404) {
-          // No onboarding data found, user hasn't completed onboarding
-          console.log('No onboarding data found for user')
-        } else {
-          console.error('Failed to fetch onboarding data:', response.status)
-        }
-      } catch (fetchError) {
-        console.error('Error fetching onboarding data:', fetchError)
-        // Fallback to localStorage if API fails
-        const storedOnboarding = localStorage.getItem('onboardingData')
-        if (storedOnboarding) {
-          setOnboardingData(JSON.parse(storedOnboarding))
-          setEditData(JSON.parse(storedOnboarding))
-        }
+        setIsLoading(false)
+      } catch (error) {
+        console.error('Error loading data:', error)
+        setIsLoading(false)
       }
-
-      setIsLoading(false)
     } catch (error) {
-      console.error('Error loading data:', error)
-      setIsLoading(false)
+      console.error('Error verifying token:', error)
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('userData');
+      localStorage.removeItem('onboardingData');
+      router.push('/auth');
     }
   }
 
@@ -151,7 +190,7 @@ export default function SettingsPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ email: userData.email })
+        body: JSON.stringify({ email: userData?.email })
       })
 
       if (response.ok) {
@@ -202,17 +241,7 @@ export default function SettingsPage() {
               <p className="text-sm text-green-100">Manage your account and preferences</p>
             </div>
           </div>
-          <button
-            onClick={() => {
-              localStorage.removeItem('authToken')
-              localStorage.removeItem('userData')
-              localStorage.removeItem('onboardingData')
-              router.push('/auth')
-            }}
-            className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition-colors"
-          >
-            Logout
-          </button>
+          <UserNavigation showProfile={false} className="text-white" />
         </div>
       </div>
 

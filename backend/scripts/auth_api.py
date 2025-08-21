@@ -498,7 +498,15 @@ def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Sympli Health Authentication API')
+    parser.add_argument('--port', type=int, default=5000, help='Port to run the server on (default: 5000)')
+    parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to bind to (default: 0.0.0.0)')
+    args = parser.parse_args()
+    
     print("🚀 Starting Authentication API Server...")
     print("📝 Using Supabase database")
+    print(f"🌐 Server will run on {args.host}:{args.port}")
     print("💡 Make sure your SUPABASE_URL and SUPABASE_ANON_KEY are configured in .env")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host=args.host, port=args.port, debug=True)

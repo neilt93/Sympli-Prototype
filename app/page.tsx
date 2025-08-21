@@ -1,237 +1,528 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import SymptomChat from './components/SymptomChat'
 
 export default function Home() {
   const router = useRouter()
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [user, setUser] = useState(null)
-  const [needsEmailVerification, setNeedsEmailVerification] = useState(false)
-  const [isResendingEmail, setIsResendingEmail] = useState(false)
+  const [activeSection, setActiveSection] = useState('home')
 
-  useEffect(() => {
-    checkAuthStatus()
-  }, [])
-
-  const checkAuthStatus = async () => {
-    const token = localStorage.getItem('authToken')
-    if (!token) {
-      setIsLoading(false)
-      return
+  const scrollToSection = (sectionId: string) => {
+    setActiveSection(sectionId)
+    const element = document.getElementById(sectionId)
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' })
     }
-
-    try {
-      // Get onboarding completion status from localStorage
-      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-      const onboardingData = JSON.parse(localStorage.getItem('onboardingData') || '{}');
-      
-      const response = await fetch('/api/auth/verify', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-Onboarding-Complete': userData.onboarding_complete ? 'true' : 'false',
-          'X-Has-Onboarding-Data': onboardingData.isComplete ? 'true' : 'false'
-        }
-      })
-
-      if (response.ok) {
-        const userData = await response.json()
-        
-        // CRITICAL SECURITY CHECK: Verify user data is valid
-        if (!userData.user || !userData.user.id || !userData.user.email) {
-          console.error('❌ Invalid user data received from backend');
-          localStorage.removeItem('authToken')
-          localStorage.removeItem('userData')
-          setIsAuthenticated(false)
-          setUser(null)
-          router.push('/auth')
-          return
-        }
-        
-        setUser(userData.user)
-        setIsAuthenticated(true)
-        setNeedsEmailVerification(userData.user.needs_email_verification || false)
-        
-        // Check if onboarding is complete
-        console.log('User data received:', userData.user);
-        console.log('Onboarding complete from API:', userData.user.onboarding_complete);
-        console.log('Onboarding complete from localStorage:', onboardingData.isComplete);
-        console.log('Email verification needed:', userData.user.needs_email_verification);
-        
-        // Check both API response and localStorage for onboarding completion
-        const isOnboardingComplete = userData.user.onboarding_complete || onboardingData.isComplete;
-        
-        if (!isOnboardingComplete) {
-          console.log('Redirecting to onboarding...');
-          router.push('/onboarding')
-          return
-        }
-        console.log('Onboarding complete, staying on main page');
-      } else {
-        console.error('❌ Auth verification failed:', response.status, response.statusText);
-        // SECURITY: Clear auth data on verification failure
-        console.log('🔒 Clearing auth data due to verification failure');
-        localStorage.removeItem('authToken')
-        localStorage.removeItem('userData')
-        setIsAuthenticated(false)
-        setUser(null)
-        router.push('/auth')
-        return
-      }
-    } catch (error) {
-      console.error('❌ Auth check failed:', error)
-      // SECURITY: Clear auth data on any error for security
-      console.log('🔒 Clearing auth data due to error');
-      localStorage.removeItem('authToken')
-      localStorage.removeItem('userData')
-      setIsAuthenticated(false)
-      setUser(null)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleLogout = () => {
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('userData')
-    setIsAuthenticated(false)
-    setUser(null)
-  }
-
-  const handleResendEmail = async () => {
-    setIsResendingEmail(true)
-    try {
-      const email = user?.email || localStorage.getItem('pendingVerificationEmail')
-      if (!email) {
-        alert('No email found. Please register again.')
-        return
-      }
-
-      const response = await fetch('/api/auth/resend-verification', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        alert('Verification email sent! Please check your inbox.')
-        // Store email for verification page
-        localStorage.setItem('pendingVerificationEmail', email)
-        // Redirect to verification page
-        router.push('/verify-email')
-      } else {
-        alert(data.error || 'Failed to resend verification email')
-      }
-    } catch (error) {
-      alert('Network error while resending verification email')
-    } finally {
-      setIsResendingEmail(false)
-    }
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading Sympli...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!isAuthenticated) {
-    router.push('/auth')
-    return null
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-green-500 text-white p-4 shadow-lg">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-              <img src="/logo-icon.svg" alt="Sympli" className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold">Sympli</h1>
-              <p className="text-sm text-green-100">Voice-first health companion</p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={() => router.push('/settings')}
-              className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition-colors"
-            >
-              Settings
-            </button>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition-colors"
-          >
-            Sign Out
-          </button>
-        </div>
-      </div>
+    <div className="min-h-screen bg-white font-sans">
+            {/* Header */}
+      <header className="fixed top-0 inset-x-0 z-50 bg-white/80 backdrop-blur border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex h-16 items-center justify-between">
+            <div className="text-2xl font-extrabold text-[#2F80ED]">Sympli</div>
 
-      {/* Email Verification Banner */}
-      {needsEmailVerification && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="bg-yellow-50 border-b border-yellow-200"
-        >
-          <div className="max-w-4xl mx-auto px-4 py-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
-                  <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-yellow-800 font-medium">Email verification required</p>
-                  <p className="text-yellow-700 text-sm">Please verify your email address to access all features</p>
-                </div>
-              </div>
-              <button
-                onClick={handleResendEmail}
-                disabled={isResendingEmail}
-                className="bg-yellow-500 hover:bg-yellow-600 disabled:bg-yellow-300 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
-              >
-                {isResendingEmail ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    Resend Email
-                  </>
-                )}
+            <nav className="hidden md:flex items-center gap-8">
+              <button onClick={() => scrollToSection('how-it-works')} className="text-gray-700 hover:text-[#2F80ED]">
+                How It Works
+              </button>
+              <button onClick={() => scrollToSection('core-features')} className="text-gray-700 hover:text-[#2F80ED]">
+                Core Features
+              </button>
+            </nav>
+
+            <div className="flex items-center gap-3">
+                          <button 
+              onClick={() => {
+                // Clear any existing auth state for demo
+                localStorage.removeItem('authToken')
+                localStorage.removeItem('userData')
+                router.push('/auth')
+              }}
+              className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 shadow-sm"
+            >
+              Demo Coming Soon
+            </button>
+            <button 
+              onClick={() => {
+                // Test direct onboarding access
+                router.push('/onboarding?forceAuth=true')
+              }}
+              className="px-4 py-2 rounded-lg bg-red-100 hover:bg-red-200 text-red-800 shadow-sm"
+            >
+              Test Onboarding Access
+            </button>
+              <button className="px-4 py-2 rounded-lg bg-[#FFB39A] text-white hover:opacity-90 shadow-sm">
+                Pilot Coming Soon
               </button>
             </div>
           </div>
-        </motion.div>
-      )}
+        </div>
+      </header>
 
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <SymptomChat />
-      </div>
+      {/* Hero Section */}
+      <section id="home" className="pt-32 pb-24 px-6 hero-wash hero-grid">
+        <div className="max-w-[1152px] mx-auto text-center">
+          {/* HEADLINE */}
+          <h1 className="mx-auto text-[44px] sm:text-[64px] md:text-[88px] font-black tracking-[-0.02em] leading-[0.98] text-gray-900 mb-6">
+            Your voice. Your health.{" "}
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-[#2F80ED] to-[#19B5A3]">Your</span>{" "}
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-[#22C55E] to-[#19B5A3]">story</span>
+            {" "}— ready for your doctor.
+          </h1>
+
+          {/* SUBTITLE */}
+          <p className="text-[18px] md:text-[20px] leading-[1.65] text-slate-500 mb-8 max-w-[760px] mx-auto">
+            The world's first Health Memory Platform — capturing your symptoms in your own words and transforming
+            them into clear, doctor-ready reports.
+          </p>
+
+          {/* VOICE CHIP */}
+          <div className="mx-auto mb-6 max-w-[560px] rounded-[12px] border border-slate-200 bg-white/70 backdrop-blur px-5 py-3 shadow-[0_1px_0_rgba(16,24,40,.04),0_1px_3px_rgba(16,24,40,.06)]">
+            <div className="flex items-center justify-center gap-3 text-slate-500">
+              <span className="text-lg">🎙️</span>
+              <em>"I've been having this recurring headache..."</em>
+            </div>
+          </div>
+
+          {/* CTAs */}
+          <div className="flex justify-center gap-4">
+            <button 
+              onClick={() => {
+                // Clear any existing auth state for demo
+                localStorage.removeItem('authToken')
+                localStorage.removeItem('userData')
+                router.push('/auth')
+              }}
+              className="px-6 py-3 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 shadow-sm"
+            >
+              Demo Coming Soon
+            </button>
+            <button className="px-6 py-3 rounded-lg bg-[#FFB39A] text-white hover:opacity-90 shadow-sm">
+              Pilot Coming Soon
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* New Category Section */}
+      <section className="py-16 px-6">
+        <div className="max-w-4xl mx-auto text-center">
+          <motion.h2 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            className="text-5xl md:text-6xl font-extrabold text-gray-900 mb-6"
+          >
+            We're Creating a{' '}
+            <span className="text-brandGreen relative">
+              New Category
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-brandBlue"></div>
+            </span>
+          </motion.h2>
+          
+          <motion.p 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+            className="text-2xl text-gray-600 mb-16 italic font-light"
+          >
+            "Not a symptom checker. Not a patient portal. Not a diary. Something entirely new."
+          </motion.p>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.4 }}
+            className="mb-16"
+          >
+            <p className="text-xl text-gray-700 mb-12 font-medium">
+              For decades, healthcare technology has focused on two moments:
+            </p>
+            
+            <div className="grid md:grid-cols-2 gap-8 mb-12">
+              <div className="border border-gray-200 rounded-lg p-8 bg-white shadow-sm">
+                <div className="text-brandBlue font-bold text-2xl mb-4">1.</div>
+                <h3 className="font-bold text-gray-900 mb-3 text-xl">Before you see the doctor</h3>
+                <p className="text-gray-600 text-lg">forms, checklists, symptom checkers</p>
+              </div>
+              <div className="border border-gray-200 rounded-lg p-8 bg-white shadow-sm">
+                <div className="text-brandBlue font-bold text-2xl mb-4">2.</div>
+                <h3 className="font-bold text-gray-900 mb-3 text-xl">During the appointment</h3>
+                <p className="text-gray-600 text-lg">notes, prescriptions, diagnoses</p>
+              </div>
+            </div>
+            
+            <p className="text-xl text-gray-700 mb-12 font-medium">
+              Everything in between — the actual lived experience of your health — has been ignored.
+            </p>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.6 }}
+            className="bg-gradient-to-r from-blue-50 to-green-50 border border-green-200 rounded-lg p-12 shadow-sm"
+          >
+            <p className="text-xl text-gray-800 leading-relaxed">
+              Sympli creates a new space: the <strong className="font-bold">Health Memory Platform.</strong><br />
+              A place where your health story lives in full context, always ready to be shared, always<br />
+              in your own words — but translated for clinical clarity.
+            </p>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* How It Works Section */}
+      <section id="how-it-works" className="py-16 px-6 bg-gray-50">
+        <div className="max-w-6xl mx-auto">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-5xl md:text-6xl font-extrabold text-gray-900 mb-6">
+              From voice to doctor — <span className="text-brandGreen">in minutes</span>
+            </h2>
+            <div className="w-28 h-[3px] bg-brandBlue mx-auto rounded-full mt-2 mb-6"></div>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              See how Sympli transforms your health story into actionable medical insights
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-5 gap-8 mb-16">
+            {[
+              {
+                icon: "🎤",
+                title: "Log Your Symptoms",
+                description: "Speak or type naturally"
+              },
+              {
+                icon: "💬",
+                title: "Smart Follow-Up",
+                description: "Sympli asks simple questions to fill in the details"
+              },
+              {
+                icon: "🔍",
+                title: "Health Memory Timeline",
+                description: "Every log stored, searchable, and secure"
+              },
+              {
+                icon: "📄",
+                title: "Clinician-Ready Report",
+                description: "Structured for medical use, ready before your appointment"
+              },
+              {
+                icon: "📤",
+                title: "Share Securely",
+                description: "Download, email, or send via a private link"
+              }
+            ].map((step, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: index * 0.1 }}
+                viewport={{ once: true }}
+                className="text-center"
+              >
+                <div className="text-4xl mb-4">{step.icon}</div>
+                <h3 className="font-bold text-gray-900 mb-2">{step.title}</h3>
+                <p className="text-gray-600 text-sm">{step.description}</p>
+              </motion.div>
+            ))}
+          </div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            viewport={{ once: true }}
+            className="grid md:grid-cols-3 gap-6"
+          >
+            <div className="bg-gradient-to-r from-blue-50 to-green-50 rounded-lg p-6 text-center">
+              <div className="text-2xl mb-3">🎤</div>
+              <p className="text-gray-800 italic">"I've been having headaches for 3 days..."</p>
+            </div>
+            <div className="bg-gradient-to-r from-blue-50 to-green-50 rounded-lg p-6 text-center">
+              <div className="text-2xl mb-3">🤖</div>
+              <p className="text-gray-800">Smart questions capture key details</p>
+            </div>
+            <div className="bg-gradient-to-r from-blue-50 to-green-50 rounded-lg p-6 text-center">
+              <div className="text-2xl mb-3">📁</div>
+              <p className="text-gray-800">Professional medical summary ready</p>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Core Features Section */}
+      <section id="core-features" className="py-16 px-6">
+        <div className="max-w-6xl mx-auto">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-5xl md:text-6xl font-extrabold text-gray-900 mb-6">
+              Core Features
+            </h2>
+            <div className="w-28 h-[3px] bg-brandBlue mx-auto rounded-full mt-2 mb-6"></div>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Everything you need to capture, organize, and share your health story.
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                icon: "🎤",
+                title: "Voice-First Logging",
+                description: "Talk naturally, Sympli does the rest."
+              },
+              {
+                icon: "🧠",
+                title: "Smart Follow-Up Questions",
+                description: "Captures what matters most for diagnosis."
+              },
+              {
+                icon: "📷",
+                title: "Attachment Uploads",
+                description: "Photos, test results, and letters in one place."
+              },
+              {
+                icon: "⚠️",
+                title: "Red Flag Alerts",
+                description: "Highlights urgent symptoms."
+              },
+              {
+                icon: "👥",
+                title: "Caregiver Mode",
+                description: "Track and manage health for someone else (with consent)."
+              },
+              {
+                icon: "🔍",
+                title: "Searchable Health Memory",
+                description: "Instantly find past logs and reports."
+              },
+              {
+                icon: "⚙️",
+                title: "Integration Ready",
+                description: "Can plug into GP systems or third-party platforms."
+              }
+            ].map((feature, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: index * 0.1 }}
+                viewport={{ once: true }}
+                className="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow cursor-pointer group"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="text-3xl">{feature.icon}</div>
+                    <div>
+                      <h3 className="font-bold text-gray-900 mb-2">{feature.title}</h3>
+                      <p className="text-gray-600">{feature.description}</p>
+                    </div>
+                  </div>
+                  <div className="text-gray-400 group-hover:text-blue-600 transition-colors">
+                    →
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Problem Section */}
+      <section className="py-24 px-6 bg-gray-50">
+        <div className="max-w-7xl mx-auto">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            viewport={{ once: true }}
+            className="text-center mb-20"
+          >
+            <h2 className="text-5xl md:text-6xl font-extrabold text-gray-900 mb-6">
+              The Problem We're Solving
+            </h2>
+            <div className="w-28 h-[3px] bg-brandBlue mx-auto rounded-full mt-2"></div>
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 gap-8">
+            {[
+              {
+                icon: "⏰",
+                title: "GP appointments are often 10 minutes or less",
+                description: "Limited time means rushed conversations and missed details."
+              },
+              {
+                icon: "🧠",
+                title: "Patients forget symptoms, timelines, and key details",
+                description: "Memory fades, especially when you're anxious or unwell."
+              },
+              {
+                icon: "🩺",
+                title: "Doctors waste precious minutes piecing together incomplete stories",
+                description: "Time that could be spent on diagnosis and treatment planning."
+              },
+              {
+                icon: "📅",
+                title: "Chronic illnesses, long NHS waitlists, and complex conditions make this worse",
+                description: "Months between appointments mean forgotten context and repeated explanations."
+              }
+            ].map((problem, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: index * 0.1 }}
+                viewport={{ once: true }}
+                className="bg-white border-2 border-gray-200 rounded-xl p-8 shadow-sm"
+              >
+                <div className="flex items-start gap-6">
+                  <div className="text-3xl">{problem.icon}</div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 mb-3 text-xl leading-tight">{problem.title}</h3>
+                    <p className="text-gray-600 text-lg leading-relaxed">{problem.description}</p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Why Sympli is Different */}
+      <section className="py-24 px-6">
+        <div className="max-w-5xl mx-auto text-center">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            viewport={{ once: true }}
+          >
+            <h2 className="text-5xl md:text-6xl font-extrabold text-gray-900 mb-6">
+              Why Sympli is <span className="text-brandGreen">Different</span>
+            </h2>
+            <div className="w-28 h-[3px] bg-brandBlue mx-auto rounded-full mt-2 mb-12"></div>
+            
+            <p className="text-3xl font-bold text-gray-800 mb-12 leading-tight">
+              "We're not improving the old system — we're redefining it."
+            </p>
+            
+            <div className="space-y-8 text-xl text-gray-700 mb-16 max-w-4xl mx-auto">
+              <p className="leading-relaxed">Sympli isn't a small upgrade to healthcare communication — it's a new foundation.</p>
+              <p className="leading-relaxed">Instead of asking patients to remember everything in the moment, we capture the story over time.</p>
+              <p className="leading-relaxed">Instead of giving doctors half the picture, we give them exactly what they need — in the right language, at the right time.</p>
+            </div>
+            
+            <div className="bg-green-100 rounded-2xl p-12 mb-16 shadow-sm">
+              <p className="text-2xl font-bold text-white bg-green-600 rounded-xl px-8 py-6 inline-block">
+                This is more than tech. It's the missing link between life and healthcare.
+              </p>
+            </div>
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 gap-12">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.8 }}
+              viewport={{ once: true }}
+              className="bg-white border-2 border-gray-200 rounded-xl p-10 shadow-sm"
+            >
+              <div className="text-5xl mb-6">💙</div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-8">Impact for Patients</h3>
+              <ul className="space-y-6 text-left">
+                <li className="flex items-start gap-4">
+                  <div className="w-3 h-3 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
+                  <span className="text-lg leading-relaxed">You never forget an important symptom.</span>
+                </li>
+                <li className="flex items-start gap-4">
+                  <div className="w-3 h-3 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
+                  <span className="text-lg leading-relaxed">You feel heard — your exact words are captured and valued.</span>
+                </li>
+                <li className="flex items-start gap-4">
+                  <div className="w-3 h-3 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
+                  <span className="text-lg leading-relaxed">You spend less of your appointment explaining, and more time discussing next steps.</span>
+                </li>
+              </ul>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.8 }}
+              viewport={{ once: true }}
+              className="bg-white border-2 border-gray-200 rounded-xl p-10 shadow-sm"
+            >
+              <div className="text-5xl mb-6">🩺</div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-8">Impact for Doctors</h3>
+              <ul className="space-y-6 text-left">
+                <li className="flex items-start gap-4">
+                  <div className="w-3 h-3 bg-green-600 rounded-full mt-2 flex-shrink-0"></div>
+                  <span className="text-lg leading-relaxed">Start every consultation already knowing the patient's story.</span>
+                </li>
+                <li className="flex items-start gap-4">
+                  <div className="w-3 h-3 bg-green-600 rounded-full mt-2 flex-shrink-0"></div>
+                  <span className="text-lg leading-relaxed">Save time on history-taking, focus more on decision-making.</span>
+                </li>
+                <li className="flex items-start gap-4">
+                  <div className="w-3 h-3 bg-green-600 rounded-full mt-2 flex-shrink-0"></div>
+                  <span className="text-lg leading-relaxed">Receive structured, clinically formatted summaries with key details surfaced.</span>
+                </li>
+              </ul>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* Vision Section */}
+      <section className="py-24 px-6">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+          viewport={{ once: true }}
+          className="bg-gradient-to-r from-blue-600 to-green-600 rounded-2xl p-16 text-center text-white shadow-lg"
+        >
+          <h2 className="text-5xl md:text-6xl font-bold mb-8">Our Vision</h2>
+          <p className="text-2xl max-w-4xl mx-auto leading-relaxed">
+            To create a world where every health story is captured, understood, and shared with the clarity it deserves.
+          </p>
+        </motion.div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-gray-900 text-white py-16 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center">
+            <h3 className="text-3xl font-bold mb-6">Sympli</h3>
+            <p className="text-gray-400 mb-12 text-xl">
+              The Health Memory Platform
+            </p>
+            <div className="flex justify-center space-x-8">
+              <button className="px-8 py-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors font-medium text-lg">
+                Demo Coming Soon
+              </button>
+              <button className="px-8 py-4 bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors font-medium text-lg">
+                Pilot Coming Soon
+              </button>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }

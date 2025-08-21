@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const authUser = authUsers.users.find(user => user.email === email);
+      const authUser = authUsers.users.find((user: any) => user.email === email);
       
       if (!authUser) {
         console.error('❌ User not found in auth.users:', email);

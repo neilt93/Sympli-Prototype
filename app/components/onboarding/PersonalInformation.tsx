@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 
 interface PersonalInformationData {
   fullName: string;
-  phoneNumber: string;
+  dateOfBirth: string;
 }
 
 interface PersonalInformationProps {
@@ -30,14 +30,14 @@ export default function PersonalInformation({ data, onUpdate }: PersonalInformat
       newErrors.fullName = 'Full name must be at least 2 characters';
     }
 
-    if (!formData.phoneNumber.trim()) {
-      newErrors.phoneNumber = 'Phone number is required';
+    if (!formData.dateOfBirth) {
+      newErrors.dateOfBirth = 'Date of birth is required';
     } else {
-      // Basic phone number validation (allows various formats)
-      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-      const cleanPhone = formData.phoneNumber.replace(/[\s\-\(\)]/g, '');
-      if (!phoneRegex.test(cleanPhone)) {
-        newErrors.phoneNumber = 'Please enter a valid phone number';
+      const today = new Date();
+      const birthDate = new Date(formData.dateOfBirth);
+      const age = today.getFullYear() - birthDate.getFullYear();
+      if (age < 0 || age > 120) {
+        newErrors.dateOfBirth = 'Please enter a valid date of birth';
       }
     }
 
@@ -83,7 +83,7 @@ export default function PersonalInformation({ data, onUpdate }: PersonalInformat
             value={formData.fullName}
             onChange={(e) => handleInputChange('fullName', e.target.value)}
             onBlur={handleBlur}
-            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${
+            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors ${
               errors.fullName ? 'border-red-500' : 'border-gray-300'
             }`}
             placeholder="Enter your full name"
@@ -100,31 +100,31 @@ export default function PersonalInformation({ data, onUpdate }: PersonalInformat
         </div>
 
         <div>
-          <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 mb-2">
-            Phone Number *
+          <label htmlFor="dateOfBirth" className="block text-sm font-medium text-gray-700 mb-2">
+            Date of Birth *
           </label>
           <input
-            type="tel"
-            id="phoneNumber"
-            value={formData.phoneNumber}
-            onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
+            type="date"
+            id="dateOfBirth"
+            value={formData.dateOfBirth}
+            onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
             onBlur={handleBlur}
-            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${
-              errors.phoneNumber ? 'border-red-500' : 'border-gray-300'
+            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors ${
+              errors.dateOfBirth ? 'border-red-500' : 'border-gray-300'
             }`}
-            placeholder="Enter your phone number"
+            placeholder="Select your date of birth"
           />
-          {errors.phoneNumber && (
+          {errors.dateOfBirth && (
             <motion.p
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               className="mt-1 text-sm text-red-600"
             >
-              {errors.phoneNumber}
+              {errors.dateOfBirth}
             </motion.p>
           )}
           <p className="mt-1 text-xs text-gray-500">
-            We'll use this to send you important health updates and reminders
+            We use this for age-appropriate health insights and recommendations
           </p>
         </div>
 

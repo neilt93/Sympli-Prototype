@@ -44,11 +44,8 @@ export async function POST(request: NextRequest) {
     // Method 2: Try verifyOtp with token directly
     if (verificationError) {
       try {
-        verificationResult = await supabase.auth.verifyOtp({
-          token: token,
-          type: 'signup'
-        });
-        verificationError = verificationResult.error;
+        // Skip this method as it requires email parameter
+        console.log('Method 2 skipped - requires email parameter');
       } catch (error) {
         console.log('Method 2 failed, trying method 3...');
       }

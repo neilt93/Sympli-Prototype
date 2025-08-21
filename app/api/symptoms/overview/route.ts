@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
     }, {} as Record<string, number>) || {};
 
     const topSymptoms = Object.entries(commonSymptoms)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([,a]: [string, number], [,b]: [string, number]) => b - a)
       .slice(0, 5)
       .map(([symptom, count]) => ({ symptom, count }));
 

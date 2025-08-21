@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { storeGDPRConsent, checkGDPRConsent, GDPRConsent } from '../lib/google-auth'
+import { storeGDPRConsent, checkGDPRConsent, type GDPRConsent } from '../lib/google-auth'
 
 interface GDPRConsentProps {
   onConsentComplete: () => void

@@ -17,10 +17,6 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: Reg
     email: '',
     password: '',
     confirmPassword: '',
-    bloodType: '',
-    allergies: '',
-    medications: '',
-    emergencyContact: '',
     consent: false
   })
   const [isLoading, setIsLoading] = useState(false)
@@ -28,7 +24,7 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: Reg
   const [success, setSuccess] = useState('')
   const [googleSignInReady, setGoogleSignInReady] = useState(false)
 
-  const bloodTypeOptions = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown']
+
 
   // Initialize Google Sign-in when component mounts
   useEffect(() => {
@@ -103,11 +99,7 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: Reg
         body: JSON.stringify({
           fullName: formData.fullName,
           email: formData.email,
-          password: formData.password,
-          bloodType: formData.bloodType,
-          allergies: formData.allergies,
-          medications: formData.medications,
-          emergencyContact: formData.emergencyContact
+          password: formData.password
         }),
       })
 
@@ -127,10 +119,8 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: Reg
           }, 2000)
         } else {
           setSuccess('Registration successful! Welcome to Sympli Health.')
-          setTimeout(() => {
-            // Use access_token from the response, not token
-            onRegisterSuccess(data.access_token, data.user)
-          }, 1500)
+          // Use access_token from the response, not token
+          onRegisterSuccess(data.access_token, data.user)
         }
       } else {
         console.error('❌ Registration failed:', data.error)
@@ -224,6 +214,10 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: Reg
           />
         </div>
 
+
+
+
+
         <div>
           <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
             Password
@@ -257,68 +251,7 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: Reg
           />
         </div>
 
-        <div>
-          <label htmlFor="bloodType" className="block text-sm font-medium text-gray-700 mb-2">
-            Blood Type
-          </label>
-          <select
-            id="bloodType"
-            name="bloodType"
-            value={formData.bloodType}
-            onChange={handleInputChange}
-            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
-          >
-            <option value="">Select blood type</option>
-            {bloodTypeOptions.map(type => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
-        </div>
 
-        <div>
-          <label htmlFor="allergies" className="block text-sm font-medium text-gray-700 mb-2">
-            Allergies
-          </label>
-          <input
-            type="text"
-            id="allergies"
-            name="allergies"
-            value={formData.allergies}
-            onChange={handleInputChange}
-            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
-            placeholder="List any allergies (optional)"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="medications" className="block text-sm font-medium text-gray-700 mb-2">
-            Current Medications
-          </label>
-          <input
-            type="text"
-            id="medications"
-            name="medications"
-            value={formData.medications}
-            onChange={handleInputChange}
-            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
-            placeholder="List current medications (optional)"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="emergencyContact" className="block text-sm font-medium text-gray-700 mb-2">
-            Emergency Contact
-          </label>
-          <input
-            type="text"
-            id="emergencyContact"
-            name="emergencyContact"
-            value={formData.emergencyContact}
-            onChange={handleInputChange}
-            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
-            placeholder="Emergency contact name & phone (optional)"
-          />
-        </div>
 
         <div className="flex items-start gap-3">
           <input
