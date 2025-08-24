@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Severity } from '../types/symptoms';
 import SymptomLogForm from './SymptomLogForm';
-import NewSymptomLogFlow from './NewSymptomLogFlow';
 import SymptomOverview from './SymptomOverview';
 import SymptomTimeline from './SymptomTimeline';
 import SymptomChat from './SymptomChat';
@@ -17,7 +16,6 @@ const SymptomDashboard: React.FC<SymptomDashboardProps> = ({ token }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'log' | 'timeline' | 'chat'>('overview');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [quickLogVisible, setQuickLogVisible] = useState(false);
-  const [useNewFlow, setUseNewFlow] = useState(true); // Toggle between old and new flow
 
   const handleSymptomLogged = () => {
     setRefreshTrigger(prev => prev + 1);
@@ -62,13 +60,6 @@ const SymptomDashboard: React.FC<SymptomDashboardProps> = ({ token }) => {
             >
               <span className="mr-2">📊</span>
               View Overview
-            </button>
-            <button
-              onClick={() => setUseNewFlow(!useNewFlow)}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-            >
-              <span className="mr-2">🔄</span>
-              {useNewFlow ? 'Use Old Flow' : 'Use New Flow'}
             </button>
           </div>
         </div>
@@ -120,18 +111,7 @@ const SymptomDashboard: React.FC<SymptomDashboardProps> = ({ token }) => {
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                {useNewFlow ? (
-                  <NewSymptomLogFlow 
-                    token={token} 
-                    onComplete={handleSymptomLogged}
-                    onCancel={() => setActiveTab('overview')}
-                  />
-                ) : (
-                  <SymptomLogForm 
-                    token={token} 
-                    onSymptomLogged={handleSymptomLogged}
-                  />
-                )}
+                <SymptomChat />
               </motion.div>
             )}
             {activeTab === 'timeline' && (

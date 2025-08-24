@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const openaiApiKey = process.env.OPENAI_API_KEY;
 
 // Use anon client for auth operations
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -36,6 +37,53 @@ export async function POST(request: NextRequest) {
 
     console.log('🤖 Generating symptoms summary for user:', user.email);
 
+    // If conversationMessages provided, generate a clinical summary for the current log
+    if (Array.isArray(body?.conversationMessages)) {
+      if (!openaiApiKey) {
+        return NextResponse.json({ error: 'OPENAI_API_KEY is missing' }, { status: 500 });
+      }
+      const conversation = (body.conversationMessages || []).map((m: any) => ({
+        role: m.type === 'user' || m.role === 'user' ? 'user' : 'assistant',
+        content: String(m.content || '')
+      })).slice(-20); // recent context
+
+      const format: 'paragraph' | 'bullets' = body?.format === 'paragraph' ? 'paragraph' : 'bullets';
+      const prompt = format === 'paragraph'
+        ? `You are a UK NHS clinical summariser. Based on the patient–assistant conversation, write a concise clinical summary of THIS SINGLE LOG as one short paragraph (2–4 sentences). Convert the patient's wording into clinical language. Include symptom(s) and context, onset/timing if known, severity if present, key associated features or red flags denied/affirmed, triggers/relievers, and functional/emotional impact if relevant. UK English, clinical, clear, neutral. No filler, no recommendations. Only use a short quote in double quotes if a specific phrase must be preserved. Output one paragraph only.`
+        : `You are a UK NHS clinical summariser. Based on the patient–assistant conversation, write a concise clinical summary of THIS SINGLE LOG in 3–6 short bullet points. Convert patient wording into clinical language. Only include verbatim quotes (in double quotes) if a specific phrase must be preserved.
+
+Rules:
+- UK English. Clinical, clear, and neutral tone.
+- No filler. No speculation. No recommendations.
+- Include: symptom(s) and context, onset/timing if known, severity if present, key associated features or red flags denied/affirmed, triggers/relievers, functional/emotional impact if mentioned.
+- Do NOT copy patient text verbatim except short quotes where essential.
+- Output bullets only, each line starting with • .`;
+
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: prompt },
+            ...conversation
+          ],
+          temperature: 0.3,
+          max_tokens: 250
+        })
+      });
+      const data = await res.json();
+      if (data?.error) {
+        console.error('Summary LLM error:', data.error);
+        return NextResponse.json({ error: 'Summary generation failed' }, { status: 500 });
+      }
+      const summaryText = (data?.choices?.[0]?.message?.content as string | undefined)?.trim();
+      if (!summaryText) {
+        return NextResponse.json({ error: 'Empty summary from model' }, { status: 500 });
+      }
+      return NextResponse.json({ summaryText });
+    }
+
     // Get user's symptom logs for summary generation
     const { data: symptomLogs, error: fetchError } = await supabaseService
       .from('symptom_logs')
@@ -59,7 +107,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate a simple summary (in a real app, you'd use AI/ML here)
+    // Generate a simple dataset summary (fallback when not using conversation-based summary)
     const totalSymptoms = symptomLogs.length;
     const recentSymptoms = symptomLogs.filter(log => {
       const logDate = new Date(log.created_at);

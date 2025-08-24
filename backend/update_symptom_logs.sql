@@ -9,6 +9,8 @@ ADD COLUMN IF NOT EXISTS symptom_type varchar(50),
 ADD COLUMN IF NOT EXISTS symptom_name varchar(255),
 ADD COLUMN IF NOT EXISTS is_new boolean,
 ADD COLUMN IF NOT EXISTS severity_scale integer,
+ADD COLUMN IF NOT EXISTS duration text,
+ADD COLUMN IF NOT EXISTS frequency text,
 ADD COLUMN IF NOT EXISTS location text,
 ADD COLUMN IF NOT EXISTS onset_time text,
 ADD COLUMN IF NOT EXISTS character_description text,
@@ -22,7 +24,9 @@ ADD COLUMN IF NOT EXISTS triggers text,
 ADD COLUMN IF NOT EXISTS patterns text,
 ADD COLUMN IF NOT EXISTS treatment_response text,
 ADD COLUMN IF NOT EXISTS progress_description text,
-ADD COLUMN IF NOT EXISTS additional_context jsonb;
+ADD COLUMN IF NOT EXISTS additional_context jsonb,
+ADD COLUMN IF NOT EXISTS extracted_entities jsonb,
+ADD COLUMN IF NOT EXISTS symptom_signature text;
 
 -- Create new indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_symptom_logs_type ON public.symptom_logs(symptom_type);
@@ -30,6 +34,8 @@ CREATE INDEX IF NOT EXISTS idx_symptom_logs_name ON public.symptom_logs(symptom_
 CREATE INDEX IF NOT EXISTS idx_symptom_logs_is_new ON public.symptom_logs(is_new);
 CREATE INDEX IF NOT EXISTS idx_symptom_logs_severity ON public.symptom_logs(severity_scale);
 CREATE INDEX IF NOT EXISTS idx_symptom_logs_user_type_name ON public.symptom_logs(user_id, symptom_type, symptom_name);
+CREATE INDEX IF NOT EXISTS idx_symptom_logs_signature ON public.symptom_logs(user_id, symptom_type, symptom_signature);
+CREATE INDEX IF NOT EXISTS idx_symptom_logs_entities_gin ON public.symptom_logs USING GIN ((extracted_entities));
 
 -- Update the anonymization function to handle new fields
 CREATE OR REPLACE FUNCTION public.anonymize_user_data(user_uuid uuid)

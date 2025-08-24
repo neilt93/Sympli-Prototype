@@ -5,6 +5,7 @@ import { PDFGenerator, PDFContent, PDFTableData } from '../../../lib/pdf-generat
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const openaiApiKey = process.env.OPENAI_API_KEY;
 
 // Use anon client for auth operations
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -38,11 +39,15 @@ export async function POST(request: NextRequest) {
     console.log('📄 Generating GP PDF for user:', user.email);
 
     const {
+      appointmentDate,
       appointmentReason,
       doctorUnderstanding,
       medicationsTried,
       recentTests,
-      relevantSymptoms
+      relevantSymptoms,
+      originalLanguage,
+      userEdited,
+      anonymisedId
     } = body;
 
     // Get user's symptom logs for the report
@@ -64,12 +69,16 @@ export async function POST(request: NextRequest) {
     // Generate PDF content structure
     const pdfContent = await generatePDFContent({
       user,
+      appointmentDate,
       appointmentReason,
       doctorUnderstanding,
       medicationsTried,
       recentTests,
       relevantSymptoms,
-      symptomLogs: symptomLogs || []
+      symptomLogs: symptomLogs || [],
+      originalLanguage,
+      userEdited: Boolean(userEdited),
+      anonymisedId
     });
 
     console.log('✅ PDF content structure generated successfully');
@@ -96,16 +105,22 @@ export async function POST(request: NextRequest) {
 
 interface PDFData {
   user: any;
+  appointmentDate?: string;
   appointmentReason: string;
   doctorUnderstanding: string;
   medicationsTried: string;
   recentTests: string;
   relevantSymptoms: string[];
   symptomLogs: any[];
+  originalLanguage?: string;
+  userEdited?: boolean;
+  anonymisedId?: string;
 }
 
+// Deprecated emoji marker removed; use plain text/numbering for reliability
+
 async function generatePDFContent(data: PDFData): Promise<PDFContent> {
-  const { user, appointmentReason, doctorUnderstanding, medicationsTried, recentTests, relevantSymptoms, symptomLogs } = data;
+  const { user, appointmentDate, appointmentReason, doctorUnderstanding, medicationsTried, recentTests, relevantSymptoms, symptomLogs, originalLanguage, userEdited, anonymisedId } = data;
   
   const now = new Date();
   const formattedDate = now.toISOString().split('T')[0]; // YYYY-MM-DD format
@@ -149,7 +164,7 @@ async function generatePDFContent(data: PDFData): Promise<PDFContent> {
 
   // Create symptom frequency table
   const symptomTableData: PDFTableData = {
-    headers: ['Symptom', 'First Logged', 'Most Recent', 'No. of Logs', 'Trend', 'Functional Impact'],
+    headers: ['Symptom', 'First', 'Recent', 'Logs', 'Trend', 'Impact'],
     rows: []
   };
 
@@ -176,23 +191,18 @@ async function generatePDFContent(data: PDFData): Promise<PDFContent> {
       severityCounts[a] > severityCounts[b] ? a : b
     );
     
-    // Create trend visualization
-    let trendDisplay = '';
-    if (trend === 'Worsening') {
-      trendDisplay = 'Worsening';
-    } else if (trend === 'Improving') {
-      trendDisplay = 'Improving';
-    } else {
-      const severity = parseInt(mostCommonSeverity) || 5;
-      if (severity <= 3) trendDisplay = 'Mild';
-      else if (severity <= 6) trendDisplay = 'Moderate';
-      else trendDisplay = 'Severe';
+    // Create trend visualization as plain text
+    const commonSeverityNumeric = parseInt(mostCommonSeverity) || 0;
+    let trendDisplay = trend;
+    if (commonSeverityNumeric > 0) {
+      trendDisplay += ` (common ${commonSeverityNumeric}/10)`;
     }
     
     // Truncate functional impact if too long
-    const functionalImpact = data.functionalImpact.length > 30 
-      ? data.functionalImpact.substring(0, 30) + '...' 
-      : data.functionalImpact;
+    const fi = (data.functionalImpact || '').trim();
+    const functionalImpact = fi
+      ? (fi.length > 40 ? fi.substring(0, 40) + '…' : fi)
+      : '—';
     
     symptomTableData.rows.push([
       symptomName,
@@ -256,41 +266,164 @@ async function generatePDFContent(data: PDFData): Promise<PDFContent> {
 
   // Clinical recommendations removed as requested
 
+  // Build Symptom Timeline table grouped by date (most recent 7 days with logs)
+  const byDate = new Map<string, any[]>();
+  for (const log of (symptomLogs || [])) {
+    const d = new Date(log.created_at);
+    const key = d.toISOString().split('T')[0];
+    if (!byDate.has(key)) byDate.set(key, []);
+    byDate.get(key)!.push(log);
+  }
+  const sortedDates = Array.from(byDate.keys()).sort((a, b) => b.localeCompare(a)).slice(0, 7);
+  const timelineTable: PDFTableData = {
+    headers: ['Date', 'Symptoms Mentioned', 'Simpli Insight (1 sentence)', 'Functional Impact', 'Emotion', 'Max Severity', 'Red Flags'],
+    rows: sortedDates.map(key => {
+      const logs = byDate.get(key)!;
+      const dateDisplay = new Date(key).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' });
+      const symptoms = Array.from(new Set(logs.map(l => String(l.symptom_name || l.symptom_data?.symptom || '—')))).join(', ');
+      const impacts = Array.from(new Set(logs.map(l => String(l.functional_impact || l.symptom_data?.report?.functionalImpact || '').trim()).filter(Boolean)));
+      const impact = impacts.length ? (impacts.join(' | ').slice(0, 50) + (impacts.join(' | ').length > 50 ? '…' : '')) : '—';
+      const emotions = (() => {
+        const bucket = new Set<string>();
+        for (const l of logs) {
+          const desc = String(l.symptom_data?.description || '').toLowerCase();
+          if (!desc) continue;
+          if (desc.includes('anxious')) bucket.add('Anxious');
+          if (desc.includes('tearful')) bucket.add('Tearful');
+          if (desc.includes('frustrated')) bucket.add('Frustrated');
+          if (desc.includes('depressed')) bucket.add('Low mood');
+        }
+        return bucket.size ? Array.from(bucket).join(', ') : '—';
+      })();
+      const sevNums = logs.map(l => parseInt(String(l.severity_scale ?? l.symptom_data?.socrates?.severity ?? '')) || 0);
+      const maxSev = Math.max(...sevNums, 0);
+      const redFlags = logs.some(l => {
+        const d = String(l.symptom_data?.description || '').toLowerCase();
+        const s = parseInt(String(l.symptom_data?.socrates?.severity || l.severity_scale || '0')) || 0;
+        return (s >= 8 || d.includes('syncope') || d.includes('breathless') || d.includes('chest pain') || d.includes('severe'));
+      }) ? 'Yes' : 'No';
+      const oneLineInsight = (() => {
+        const parts: string[] = [];
+        if (maxSev > 0) parts.push(`Max severity ${maxSev}/10`);
+        const triggers = Array.from(new Set(logs.map(l => String(l.triggers || l.symptom_data?.report?.triggers || '').trim()).filter(Boolean)));
+        if (triggers.length) parts.push(`Triggers: ${triggers.slice(0, 2).join(', ')}`);
+        return parts.length ? parts.join('; ') : '—';
+      })();
+      return [dateDisplay, symptoms, oneLineInsight, impact, emotions, maxSev ? `${maxSev}/10` : '—', redFlags];
+    })
+  };
+
+  // Build Symptom Summaries table (recent logs)
+  const recentForSummaries = (symptomLogs || []).slice(0, 10);
+  const summariesTable: PDFTableData = {
+    headers: ['Date & Time', 'Symptom', 'Summary'],
+    rows: recentForSummaries.map(log => {
+      const dt = new Date(log.created_at);
+      const dtDisplay = dt.toLocaleString('en-GB', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const symptom = String(log.symptom_name || log.symptom_data?.symptom || '—');
+      const sevNum = parseInt(String(log.severity_scale ?? log.symptom_data?.socrates?.severity ?? '')) || 0;
+      const timeCourse = String(log.time_course || log.symptom_data?.socrates?.timeCourse || '').trim();
+      const triggers = String(log.triggers || log.symptom_data?.report?.triggers || '').trim();
+      const impact = String(log.functional_impact || log.symptom_data?.report?.functionalImpact || '').trim();
+      const character = String(log.symptom_data?.socrates?.character || '').trim();
+      const summaryParts: string[] = [];
+      if (sevNum) summaryParts.push(`Severity ${sevNum}/10`);
+      if (character) summaryParts.push(character);
+      if (timeCourse) summaryParts.push(timeCourse);
+      if (triggers) summaryParts.push(`Triggers: ${triggers}`);
+      if (impact) summaryParts.push(`Impact: ${impact}`);
+      const summaryJoined = summaryParts.join('; ');
+      const summary = summaryJoined ? (summaryJoined.length > 110 ? summaryJoined.slice(0, 110) + '…' : summaryJoined) : '—';
+      return [dtDisplay, symptom, summary];
+    })
+  };
+
+  // Parse appointment date/time for display
+  let apptDisplay = appointmentDate || '';
+  try {
+    if (appointmentDate) {
+      const parsed = new Date(appointmentDate);
+      if (!isNaN(parsed.getTime())) {
+        apptDisplay = parsed.toLocaleString('en-GB', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      }
+    }
+  } catch {}
+
   // Create PDF content structure
+  const rephraseClinically = async (text: string): Promise<string> => {
+    const t = String(text || '').trim();
+    if (!t) return '';
+    try {
+      if (!openaiApiKey) return t.charAt(0).toUpperCase() + t.slice(1);
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'You are a UK NHS clinical summariser. Rewrite the patient\'s sentence as a concise clinical phrasing suitable for a GP letter. Use clinical terms where appropriate. Only include verbatim patient quotes (in double quotes) if a specific phrase must be preserved. Output one sentence only.' },
+            { role: 'user', content: t }
+          ],
+          temperature: 0.4,
+          max_tokens: 120
+        })
+      });
+      const data = await res.json();
+      const content = data?.choices?.[0]?.message?.content as string | undefined;
+      if (!content) return t.charAt(0).toUpperCase() + t.slice(1);
+      return content.trim();
+    } catch {
+      return t.charAt(0).toUpperCase() + t.slice(1);
+    }
+  };
+
+  const clinicalReason = appointmentReason ? await rephraseClinically(appointmentReason) : '';
+  const clinicalUnderstanding = doctorUnderstanding ? await rephraseClinically(doctorUnderstanding) : '';
   const pdfContent: PDFContent = {
     title: 'Medical Appointment Report by Sympli',
     patientInfo: {
       email: user.email,
-      date: formattedDate
+      date: formattedDate,
+      name: user?.user_metadata?.full_name || undefined,
+      anonymisedId: anonymisedId,
+      appointmentDate: apptDisplay
     },
+    originalLanguage: originalLanguage,
+    userEdited: Boolean(userEdited),
     sections: [
       {
-        title: '1. EXECUTIVE SUMMARY',
-        content: `Reason for Appointment: ${appointmentReason || 'Comprehensive symptom analysis and health summary'}\n\n` +
-                `What the Patient Wants the Doctor to Understand: ${doctorUnderstanding || 'Patient has been tracking symptoms using Sympli Health Companion and seeks comprehensive medical assessment.'}\n\n` +
-                `Summary Statistics:\n` +
-                `• Total symptom entries: ${totalSymptoms}\n` +
-                `• Unique symptoms tracked: ${uniqueSymptoms}\n` +
-                `${avgSeverity > 0 ? `• Average severity: ${avgSeverity.toFixed(1)}/10\n` : ''}` +
-                `• Tracking period: ${symptomLogs.length > 0 ? 
-                  `${Math.ceil((new Date().getTime() - new Date(symptomLogs[0].created_at).getTime()) / (1000 * 60 * 60 * 24))} days` : 
-                  'Not specified'}`
+        title: `1. EXECUTIVE SUMMARY (Quick Appointment Context)${userEdited ? ' (User-edited)' : ''}`,
+        content: [
+          `Reason for Appointment: ${clinicalReason || 'Not provided.'}`,
+          `What the Patient Wants the Doctor to Understand: ${clinicalUnderstanding || 'Not provided.'}`
+        ].join('\n')
       },
       {
-        title: '2. SYMPTOM FREQUENCY OVERVIEW',
+        title: `2. SYMPTOM FREQUENCY OVERVIEW${userEdited ? ' (User-edited)' : ''}`,
         content: symptomTableData
       },
       {
-        title: '3. SIMPLI INSIGHT (Clinically-Relevant Bullet Summary)',
+        title: `3. SIMPLI INSIGHT (Clinically Relevant Bullet Summary)${userEdited ? ' (User-edited)' : ''}`,
         content: insightsText
       },
       {
-        title: '4. PATIENT HISTORY',
+        title: `4. SYMPTOM TIMELINE (Structured Table)${userEdited ? ' (User-edited)' : ''}`,
+        content: timelineTable
+      },
+      {
+        title: `5. QUICK HISTORY OF PATIENT${userEdited ? ' (User-edited)' : ''}`,
         content: historyTableData
       },
-
+      {
+        title: `6. SYMPTOM SUMMARIES (Recent Logs)${userEdited ? ' (User-edited)' : ''}`,
+        content: summariesTable
+      },
+      {
+        title: '7. ATTACHMENTS (To be implemented)',
+        content: 'Attachments uploaded by the patient will appear here in a future update.'
+      }
     ],
-    footer: `CONFIDENTIAL MEDICAL REPORT | Generated on ${formattedDate} | Sympli Health Companion\nAuto-generated report. Please confirm findings with patient.`
+    footer: `CONFIDENTIAL MEDICAL REPORT | Generated on ${formattedDate} | Sympli\nAuto-generated report. Please confirm findings with patient.`
   };
 
   // Return the PDFContent object for PDF generation

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import SymptomChat from '../components/SymptomChat';
+import SymptomTimeline from '../components/SymptomTimeline';
 import UserNavigation from '../components/UserNavigation';
 
 const SymptomsPage: React.FC = () => {
@@ -72,16 +73,6 @@ const SymptomsPage: React.FC = () => {
     checkAuth();
   }, []); // Remove router dependency to prevent re-runs
 
-
-
-  if (!token) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
@@ -97,9 +88,13 @@ const SymptomsPage: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content - Chat Interface */}
-      <main className="flex-1 flex flex-col">
-        <SymptomChat />
+      {/* Main Content - Chat or Timeline */}
+      <main className="flex-1 flex flex-col p-6">
+        {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'timeline' && token ? (
+          <SymptomTimeline token={token} />
+        ) : (
+          <SymptomChat />
+        )}
       </main>
     </div>
   );

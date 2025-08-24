@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Return combined auth and profile data
-    const response = {
+    const payload = {
       user: {
         id: data.user.id,
         email: data.user.email,
@@ -102,8 +102,31 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    console.log('✅ Login successful, returning user data');
-    return NextResponse.json(response);
+    console.log('✅ Login successful, setting auth cookie and returning user data');
+    const res = NextResponse.json(payload);
+
+    const maxAge = 60 * 60 * 24 * 7; // 7 days
+    const isProd = process.env.NODE_ENV === 'production';
+
+    // Set secure httpOnly cookie for middleware protection
+    res.cookies.set('auth_token', data.session.access_token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      path: '/',
+      maxAge,
+    });
+
+    // Optionally set refresh token as well (httpOnly)
+    res.cookies.set('refresh_token', data.session.refresh_token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      path: '/',
+      maxAge,
+    });
+
+    return res;
 
   } catch (error) {
     console.error('Login error:', error);

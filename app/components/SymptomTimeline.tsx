@@ -24,10 +24,13 @@ const SymptomTimeline: React.FC<SymptomTimelineProps> = ({ token, symptom }) => 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterSeverity, setFilterSeverity] = useState<Severity | 'all'>('all');
+  const [viewMode, setViewMode] = useState<'recent' | 'all' | 'search'>('recent');
+  const [recentCount, setRecentCount] = useState<number>(5);
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   useEffect(() => {
     fetchSymptomLogs();
-  }, [token, symptom, filterSeverity]);
+  }, [token, symptom, filterSeverity, viewMode, recentCount, searchQuery]);
 
   const fetchSymptomLogs = async () => {
     try {
@@ -40,6 +43,13 @@ const SymptomTimeline: React.FC<SymptomTimelineProps> = ({ token, symptom }) => 
       }
       if (filterSeverity !== 'all') {
         url += `${symptom ? '&' : '?'}severity=${filterSeverity}`;
+      }
+      if (viewMode === 'recent') {
+        url += `${url.includes('?') ? '&' : '?'}recent=${recentCount}`;
+      } else if (viewMode === 'all') {
+        url += `${url.includes('?') ? '&' : '?'}limit=100`;
+      } else if (viewMode === 'search' && searchQuery.trim()) {
+        url += `${url.includes('?') ? '&' : '?'}q=${encodeURIComponent(searchQuery.trim())}`;
       }
       
       const response = await fetch(url, {
@@ -54,12 +64,31 @@ const SymptomTimeline: React.FC<SymptomTimelineProps> = ({ token, symptom }) => 
       }
 
       const result = await response.json();
-      setLogs(result.logs || []);
+      const rows = Array.isArray(result.logs) ? result.logs : [];
+      const mapped: SymptomLogEntry[] = rows.map((r: any) => ({
+        _id: String(r.id),
+        symptom: String(r.symptom_name || r.symptom_type || 'Symptom'),
+        severity: mapSeverityScaleToEnum(r.severity_scale),
+        tags: [],
+        occurredAt: r.created_at,
+        context: String(r.description || r.functional_impact || r.treatment_response || ''),
+        createdAt: r.created_at
+      }));
+      setLogs(mapped);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch symptom logs');
     } finally {
       setLoading(false);
     }
+  };
+
+  const mapSeverityScaleToEnum = (scale: number): Severity => {
+    const n = typeof scale === 'number' ? scale : NaN;
+    if (isNaN(n)) return Severity.NONE;
+    if (n <= 2) return Severity.NONE;
+    if (n <= 4) return Severity.MILD;
+    if (n <= 7) return Severity.MODERATE;
+    return Severity.SEVERE;
   };
 
   const getSeverityColor = (severity: Severity) => {
@@ -171,6 +200,25 @@ const SymptomTimeline: React.FC<SymptomTimelineProps> = ({ token, symptom }) => 
             <option value={Severity.MODERATE}>Moderate</option>
             <option value={Severity.SEVERE}>Severe</option>
           </select>
+          <div className="ml-4 flex items-center space-x-2">
+            <button onClick={() => setViewMode('recent')} className={`px-3 py-1 text-sm rounded-md border ${viewMode==='recent'?'bg-gray-200':'bg-white hover:bg-gray-50'} border-gray-300`}>View recent</button>
+            <button onClick={() => setViewMode('all')} className={`px-3 py-1 text-sm rounded-md border ${viewMode==='all'?'bg-gray-200':'bg-white hover:bg-gray-50'} border-gray-300`}>View all</button>
+            <button onClick={() => setViewMode('search')} className={`px-3 py-1 text-sm rounded-md border ${viewMode==='search'?'bg-gray-200':'bg-white hover:bg-gray-50'} border-gray-300`}>Search</button>
+          </div>
+          {viewMode === 'recent' && (
+            <div className="ml-2 flex items-center space-x-2">
+              <span className="text-sm">Last</span>
+              <select value={recentCount} onChange={(e)=>setRecentCount(parseInt(e.target.value))} className="border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+          )}
+          {viewMode === 'search' && (
+            <div className="ml-2 flex items-center space-x-2">
+              <input value={searchQuery} onChange={(e)=>setSearchQuery(e.target.value)} placeholder="Search by keyword" className="border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-2 py-1" />
+              <button onClick={fetchSymptomLogs} className="px-3 py-1 text-sm rounded-md border bg-white hover:bg-gray-50 border-gray-300">Go</button>
+            </div>
+          )}
         </div>
       </div>
 

@@ -34,28 +34,16 @@ export default function Home() {
             </nav>
 
             <div className="flex items-center gap-3">
-                          <button 
-              onClick={() => {
-                // Clear any existing auth state for demo
-                localStorage.removeItem('authToken')
-                localStorage.removeItem('userData')
-                router.push('/auth')
-              }}
-              className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 shadow-sm"
-            >
-              Demo Coming Soon
-            </button>
-            <button 
-              onClick={() => {
-                // Test direct onboarding access
-                router.push('/onboarding?forceAuth=true')
-              }}
-              className="px-4 py-2 rounded-lg bg-red-100 hover:bg-red-200 text-red-800 shadow-sm"
-            >
-              Test Onboarding Access
-            </button>
-              <button className="px-4 py-2 rounded-lg bg-[#FFB39A] text-white hover:opacity-90 shadow-sm">
-                Pilot Coming Soon
+              <button 
+                onClick={() => {
+                  // Clear any existing auth state for demo
+                  localStorage.removeItem('authToken')
+                  localStorage.removeItem('userData')
+                  router.push('/auth')
+                }}
+                className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 shadow-sm"
+              >
+                Demo Coming Soon
               </button>
             </div>
           </div>
@@ -100,9 +88,7 @@ export default function Home() {
             >
               Demo Coming Soon
             </button>
-            <button className="px-6 py-3 rounded-lg bg-[#FFB39A] text-white hover:opacity-90 shadow-sm">
-              Pilot Coming Soon
-            </button>
+            
           </div>
         </div>
       </section>
@@ -516,9 +502,7 @@ export default function Home() {
               <button className="px-8 py-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors font-medium text-lg">
                 Demo Coming Soon
               </button>
-              <button className="px-8 py-4 bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors font-medium text-lg">
-                Pilot Coming Soon
-              </button>
+              
             </div>
           </div>
         </div>

@@ -15,12 +15,12 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Sympli Health - AI Health Companion',
+  title: 'Sympli - AI Health Companion',
   description: 'Voice-first AI health companion that helps you log symptoms, track patterns, and generate reports for your GP.',
   keywords: ['health', 'AI', 'voice', 'symptoms', 'medical', 'PWA'],
-  authors: [{ name: 'Sympli Health Team' }],
-  creator: 'Sympli Health',
-  publisher: 'Sympli Health',
+  authors: [{ name: 'Sympli Team' }],
+  creator: 'Sympli',
+  publisher: 'Sympli',
   formatDetection: {
     email: false,
     address: false,
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     canonical: '/',
   },
   openGraph: {
-    title: 'Sympli Health - AI Health Companion',
+    title: 'Sympli - AI Health Companion',
     description: 'Voice-first AI health companion that helps you log symptoms, track patterns, and generate reports for your GP.',
     url: 'https://sympli-health.com',
     siteName: 'Sympli Health',
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sympli Health - AI Health Companion',
+    title: 'Sympli - AI Health Companion',
     description: 'Voice-first AI health companion that helps you log symptoms, track patterns, and generate reports for your GP.',
   },
   robots: {
@@ -58,9 +58,9 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Sympli Health',
+    title: 'Sympli',
   },
-  applicationName: 'Sympli Health',
+  applicationName: 'Sympli',
   referrer: 'origin-when-cross-origin',
   icons: {
     icon: [
@@ -82,10 +82,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <meta name="application-name" content="Sympli Health" />
+        <meta name="application-name" content="Sympli" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Sympli Health" />
+        <meta name="apple-mobile-web-app-title" content="Sympli" />
         <meta name="description" content="Voice-first AI health companion" />
         <meta name="format-detection" content="telephone=no" />
         <meta name="mobile-web-app-capable" content="yes" />
