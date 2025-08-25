@@ -41,9 +41,9 @@ export default function Home() {
                   localStorage.removeItem('userData')
                   router.push('/auth')
                 }}
-                className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 shadow-sm"
+                className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-md ring-1 ring-blue-500/30 transition-transform hover:scale-[1.03]"
               >
-                Demo Coming Soon
+                🚀 Try Demo
               </button>
             </div>
           </div>
@@ -84,9 +84,9 @@ export default function Home() {
                 localStorage.removeItem('userData')
                 router.push('/auth')
               }}
-              className="px-6 py-3 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 shadow-sm"
+              className="px-7 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-md ring-1 ring-blue-500/30 transition-transform hover:scale-[1.04] text-base md:text-lg"
             >
-              Demo Coming Soon
+              🚀 Try Demo
             </button>
             
           </div>
@@ -499,8 +499,15 @@ export default function Home() {
               The Health Memory Platform
             </p>
             <div className="flex justify-center space-x-8">
-              <button className="px-8 py-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors font-medium text-lg">
-                Demo Coming Soon
+              <button 
+                onClick={() => {
+                  localStorage.removeItem('authToken')
+                  localStorage.removeItem('userData')
+                  router.push('/auth')
+                }}
+                className="px-9 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-transform hover:scale-[1.03] shadow-md ring-1 ring-blue-500/30 font-semibold text-lg"
+              >
+                🚀 Try Demo
               </button>
               
             </div>

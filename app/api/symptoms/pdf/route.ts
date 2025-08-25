@@ -47,7 +47,8 @@ export async function POST(request: NextRequest) {
       relevantSymptoms,
       originalLanguage,
       userEdited,
-      anonymisedId
+      anonymisedId,
+      confirmed
     } = body;
 
     // Get user's symptom logs for the report
@@ -115,40 +116,68 @@ interface PDFData {
   originalLanguage?: string;
   userEdited?: boolean;
   anonymisedId?: string;
+  confirmed?: boolean;
 }
 
 // Deprecated emoji marker removed; use plain text/numbering for reliability
 
 async function generatePDFContent(data: PDFData): Promise<PDFContent> {
-  const { user, appointmentDate, appointmentReason, doctorUnderstanding, medicationsTried, recentTests, relevantSymptoms, symptomLogs, originalLanguage, userEdited, anonymisedId } = data;
+  const { user, appointmentDate, appointmentReason, doctorUnderstanding, medicationsTried, recentTests, relevantSymptoms, symptomLogs, originalLanguage, userEdited, anonymisedId, confirmed } = data;
   
   const now = new Date();
   const formattedDate = now.toISOString().split('T')[0]; // YYYY-MM-DD format
 
-  // Group symptoms by name and calculate frequency data
-  const symptomGroups = new Map();
+  // Group symptoms by normalized name and calculate rollups
+  type Group = {
+    displayName: string;
+    firstLogged: Date;
+    mostRecent: Date;
+    count: number;
+    severities: number[];
+    datedSeverities: Array<{ d: Date; s: number }>;
+    functionalImpact: string;
+  };
+  const symptomGroups: Map<string, Group> = new Map();
   
   if (symptomLogs && symptomLogs.length > 0) {
     symptomLogs.forEach(log => {
       const symptomData = log.symptom_data || {};
-      const symptomName = symptomData.symptom || 'Unknown Symptom';
-      const severity = symptomData.socrates?.severity || 'Unknown';
+      const rawName = String(log.symptom_name || symptomData.symptom || 'Unknown Symptom').trim();
+      const key = rawName.toLowerCase();
+      const symptomName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+      const sevNum = (() => {
+        const a = Number(log.severity_scale);
+        if (!isNaN(a) && a > 0) return a;
+        const b = Number(symptomData?.socrates?.severity);
+        return !isNaN(b) && b > 0 ? b : 0;
+      })();
       const date = new Date(log.created_at);
       
-      if (!symptomGroups.has(symptomName)) {
-        symptomGroups.set(symptomName, {
+      if (!symptomGroups.has(key)) {
+        symptomGroups.set(key, {
+          displayName: symptomName,
           firstLogged: date,
           mostRecent: date,
           count: 1,
-          severities: [severity],
-          functionalImpact: symptomData.description || 'Functional impact not reported by patient'
+          severities: sevNum ? [sevNum] : [],
+          datedSeverities: sevNum ? [{ d: date, s: sevNum }] : [],
+          functionalImpact: (() => {
+            const fi = String(log.functional_impact || symptomData?.report?.functionalImpact || '').trim();
+            return fi || 'None';
+          })()
         });
       } else {
-        const group = symptomGroups.get(symptomName);
+        const group = symptomGroups.get(key)!;
+        // Keep the nicest-cased display name (prefer longer, latest)
+        if (symptomName.length > group.displayName.length) group.displayName = symptomName;
         group.count++;
-        group.severities.push(severity);
+        if (sevNum) group.severities.push(sevNum);
+        if (sevNum) group.datedSeverities.push({ d: date, s: sevNum });
         if (date < group.firstLogged) group.firstLogged = date;
         if (date > group.mostRecent) group.mostRecent = date;
+        // update functional impact if we have a non-empty one
+        const fi = String(log.functional_impact || symptomData?.report?.functionalImpact || '').trim();
+        if (fi) group.functionalImpact = fi;
       }
     });
   }
@@ -156,53 +185,97 @@ async function generatePDFContent(data: PDFData): Promise<PDFContent> {
   // Calculate summary statistics
   const totalSymptoms = symptomLogs.length;
   const uniqueSymptoms = symptomGroups.size;
-  const avgSeverity = Array.from(symptomGroups.values())
-    .flatMap(data => data.severities.filter(s => s !== 'Unknown'))
-    .reduce((sum, s) => sum + parseInt(s), 0) / 
-    Array.from(symptomGroups.values())
-      .flatMap(data => data.severities.filter(s => s !== 'Unknown')).length || 0;
+  const avgSeverity = (() => {
+    const all = Array.from(symptomGroups.values()).flatMap(g => g.severities);
+    if (!all.length) return 0;
+    return all.reduce((a, b) => a + b, 0) / all.length;
+  })();
 
-  // Create symptom frequency table
+  // Create symptom frequency table (filtered to relevant symptoms)
   const symptomTableData: PDFTableData = {
     headers: ['Symptom', 'First', 'Recent', 'Logs', 'Trend', 'Impact'],
     rows: []
   };
 
-  symptomGroups.forEach((data, symptomName) => {
+  async function judgeRelevantSymptoms(reason: string, groups: Map<string, any>): Promise<Set<string>> {
+    try {
+      const names = Array.from(groups.values()).map((g: any) => g.displayName);
+      // Fallback heuristic: token overlap
+      const fallback = () => {
+        const r = reason.toLowerCase();
+        const set = new Set<string>();
+        names.forEach(n => { if (!reason || r.includes(n.toLowerCase().split(' ')[0])) set.add(n); });
+        if (set.size === 0) {
+          // choose top 3 by recency
+          Array.from(groups.values())
+            .sort((a: any, b: any) => b.mostRecent.getTime() - a.mostRecent.getTime())
+            .slice(0, 3)
+            .forEach((g: any) => set.add(g.displayName));
+        }
+        return set;
+      };
+      if (!openaiApiKey) return fallback();
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0.1,
+          max_tokens: 60,
+          messages: [
+            { role: 'system', content: 'You are a UK NHS clinical assistant. From a list of symptom names and a reason for appointment, select only those symptoms directly relevant to the reason. Output strict JSON: {"relevant":["name1","name2"]}. No commentary.' },
+            { role: 'user', content: `Reason: ${reason || '—'}` },
+            { role: 'user', content: `Symptoms: ${JSON.stringify(names)}` }
+          ]
+        })
+      });
+      const data = await res.json();
+      const parsed = (() => { try { return JSON.parse((data?.choices?.[0]?.message?.content || '').trim()); } catch { return null; } })();
+      const arr: string[] = Array.isArray(parsed?.relevant) ? parsed.relevant : [];
+      if (!arr.length) return fallback();
+      return new Set(arr);
+    } catch {
+      return new Set(Array.from(groups.values()).map((g: any) => g.displayName));
+    }
+  }
+
+  const relevantSet = await judgeRelevantSymptoms(await composeReason(appointmentReason), symptomGroups);
+
+  symptomGroups.forEach((data, _key) => {
+    if (relevantSet.size && !relevantSet.has(data.displayName)) return;
+    const symptomName = data.displayName;
     const firstDate = data.firstLogged.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
     const lastDate = data.mostRecent.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
     
     // Calculate trend
-    const severityLevels = data.severities.filter(s => s !== 'Unknown');
-    let trend = 'Stable';
-    if (severityLevels.length >= 2) {
-      const firstSeverity = parseInt(severityLevels[0]) || 5;
-      const lastSeverity = parseInt(severityLevels[severityLevels.length - 1]) || 5;
-      if (lastSeverity > firstSeverity + 2) trend = 'Worsening';
-      else if (lastSeverity < firstSeverity - 2) trend = 'Improving';
+    let trend = '—';
+    let sevMin = '—', sevMax = '—', sevLast = '—';
+    if (data.severities.length) {
+      const sorted = data.datedSeverities.slice().sort((a, b) => a.d.getTime() - b.d.getTime());
+      const nums = sorted.map(x => x.s);
+      const last3 = nums.slice(-3);
+      const prev3 = nums.slice(-6, -3);
+      const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      const delta = avg(last3) - avg(prev3);
+      trend = delta > 0.5 ? 'worsening' : delta < -0.5 ? 'improving' : 'stable';
+      const min = Math.min(...nums);
+      const max = Math.max(...nums);
+      const last = nums[nums.length - 1];
+      sevMin = String(min);
+      sevMax = String(max);
+      sevLast = String(last);
     }
     
     // Get most common severity for trend display
-    const severityCounts: Record<string, number> = {};
-    data.severities.forEach(s => {
-      severityCounts[s] = (severityCounts[s] || 0) + 1;
-    });
-    const mostCommonSeverity = Object.keys(severityCounts).reduce((a, b) => 
-      severityCounts[a] > severityCounts[b] ? a : b
-    );
-    
-    // Create trend visualization as plain text
-    const commonSeverityNumeric = parseInt(mostCommonSeverity) || 0;
-    let trendDisplay = trend;
-    if (commonSeverityNumeric > 0) {
-      trendDisplay += ` (common ${commonSeverityNumeric}/10)`;
-    }
+    // Compose trend/severity display
+    // Trend should be a single word only
+    const trendDisplay = trend !== '—' ? trend : '—';
     
     // Truncate functional impact if too long
     const fi = (data.functionalImpact || '').trim();
     const functionalImpact = fi
       ? (fi.length > 40 ? fi.substring(0, 40) + '…' : fi)
-      : '—';
+      : 'None';
     
     symptomTableData.rows.push([
       symptomName,
@@ -230,36 +303,67 @@ async function generatePDFContent(data: PDFData): Promise<PDFContent> {
     ]
   };
 
-  // Generate insights
+  // Prepare a concise SYMPLI INSIGHT paragraph instead of bullets
   const insights = generateSimpliInsights(symptomLogs, symptomGroups);
-  let insightsText = '';
-  if (insights.length > 0) {
-    insights.forEach(insight => {
-      insightsText += `• ${insight}\n`;
+  const topThree = Array.from(symptomGroups.values())
+    .sort((a: any, b: any) => b.count - a.count || b.mostRecent.getTime() - a.mostRecent.getTime())
+    .slice(0, 3)
+    .map(g => {
+      const last = g.severities.length ? g.severities[g.severities.length - 1] : 0;
+      const lastText = last ? `${last}/10` : '—';
+      const sorted = g.datedSeverities.slice().sort((a: any, b: any) => a.d.getTime() - b.d.getTime());
+      const nums = sorted.map((x: any) => x.s);
+      const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      const delta = avg(nums.slice(-3)) - avg(nums.slice(-6, -3));
+      const trend = delta > 0.5 ? 'worsening' : delta < -0.5 ? 'improving' : 'stable';
+      const impact = (g.functionalImpact || '').trim();
+      return `${g.displayName.toLowerCase()}: last ${lastText}, ${trend}${impact ? `, impact: ${impact}` : ''}`;
     });
-  } else {
-    symptomGroups.forEach((data, symptomName) => {
-      const severity = data.severities.find(s => s !== 'Unknown') || 'Unknown';
-      const daysBetween = Math.ceil((data.mostRecent - data.firstLogged) / (1000 * 60 * 60 * 24));
-      const functionalImpact = data.functionalImpact !== 'Not specified' ? data.functionalImpact : 'Impact on daily activities not specified';
-      
-      insightsText += `• ${symptomName}: ${severity}/10 severity, ongoing for ${daysBetween} days. ${functionalImpact}.\n`;
-    });
+  async function composeInsightParagraph(): Promise<string> {
+    try {
+      const context = {
+        top: topThree,
+        anyRedFlags: hasHighSeverity,
+      };
+      if (!openaiApiKey) {
+        const parts = topThree.length ? topThree.join('; ') : 'No recent symptom patterns stand out.';
+        return `Overall, symptoms are ${hasWorseningTrends ? 'trending worse' : hasHighSeverity ? 'significant at times' : 'mostly stable'}. Key items: ${parts}.`;
+      }
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0.3,
+          max_tokens: 90,
+          messages: [
+            { role: 'system', content: 'Write a single short paragraph (<= 70 words) that ties together key symptom patterns for a GP. No diagnosis, no recommendations. Use UK clinical tone. Mention trend (worsening/improving/stable) and functional impact if present. Do not repeat patient name or meta text.' },
+            { role: 'user', content: `Data to summarise: ${JSON.stringify(context)}` }
+          ]
+        })
+      });
+      const data = await res.json();
+      const out = String(data?.choices?.[0]?.message?.content || '').trim();
+      return out || 'Overall symptom pattern appears stable with intermittent impact on daily activities.';
+    } catch {
+      return 'Overall symptom pattern appears stable with intermittent impact on daily activities.';
+    }
   }
+  const insightsText = await composeInsightParagraph();
 
   // Analyze for red flags and trends
   const hasWorseningTrends = Array.from(symptomGroups.values()).some(data => {
-    const severityLevels = data.severities.filter(s => s !== 'Unknown');
-    if (severityLevels.length >= 2) {
-      const firstSeverity = parseInt(severityLevels[0]) || 5;
-      const lastSeverity = parseInt(severityLevels[severityLevels.length - 1]) || 5;
-      return lastSeverity > firstSeverity + 2;
+    const nums = data.severities;
+    if (nums.length >= 2) {
+      const first = nums[0] || 0;
+      const last = nums[nums.length - 1] || 0;
+      return last > first + 2;
     }
     return false;
   });
   
   const hasHighSeverity = Array.from(symptomGroups.values()).some(data => {
-    return data.severities.some(s => parseInt(s) >= 8);
+    return data.severities.some(s => s >= 8);
   });
   
   const totalLogs = symptomLogs.length;
@@ -274,69 +378,111 @@ async function generatePDFContent(data: PDFData): Promise<PDFContent> {
     if (!byDate.has(key)) byDate.set(key, []);
     byDate.get(key)!.push(log);
   }
-  const sortedDates = Array.from(byDate.keys()).sort((a, b) => b.localeCompare(a)).slice(0, 7);
+  const sortedDates = Array.from(byDate.keys()).sort((a, b) => b.localeCompare(a)).slice(0, 10);
+  type DayRow = { key: string; dateDisplay: string; symptoms: string; symptomsArray: string[]; tags: string[]; impact: string; emotions: string; maxSev: number; red: string };
+  const dayRows: DayRow[] = sortedDates.map(key => {
+    const logs = byDate.get(key)!;
+    const dateDisplay = new Date(key).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' });
+    const symptomSet = new Set<string>(logs.map(l => String(l.symptom_name || l.symptom_data?.symptom || '—')));
+    const symptomsArray = Array.from(symptomSet);
+    const symptoms = symptomsArray.join(', ');
+    const tagsSet = new Set<string>();
+    for (const l of logs) {
+      const t = Array.isArray(l.tags) ? l.tags : [];
+      for (const tag of t) {
+        const v = String(tag || '').trim();
+        if (v) tagsSet.add(v);
+      }
+    }
+    const tags = Array.from(tagsSet);
+    const impacts = Array.from(new Set(logs.map(l => String(l.functional_impact || l.symptom_data?.report?.functionalImpact || '').trim()).filter(Boolean)));
+    const impact = impacts.length ? (impacts.join(' | ').slice(0, 50) + (impacts.join(' | ').length > 50 ? '…' : '')) : '—';
+    const emotions = (() => {
+      const bucket = new Set<string>();
+      for (const l of logs) {
+        const desc = String(l.symptom_data?.description || '').toLowerCase();
+        if (!desc) continue;
+        if (desc.includes('anxious')) bucket.add('Anxious');
+        if (desc.includes('tearful')) bucket.add('Tearful');
+        if (desc.includes('frustrated')) bucket.add('Frustrated');
+        if (desc.includes('depressed')) bucket.add('Low mood');
+      }
+      return bucket.size ? Array.from(bucket).join(', ') : '—';
+    })();
+    const sevNums = logs.map(l => parseInt(String(l.severity_scale ?? l.symptom_data?.socrates?.severity ?? '')) || 0);
+    const maxSev = Math.max(...sevNums, 0);
+    const red = logs.some(l => {
+      const d = String(l.symptom_data?.description || '').toLowerCase();
+      const s = parseInt(String(l.symptom_data?.socrates?.severity || l.severity_scale || '0')) || 0;
+      return (s >= 8 || d.includes('syncope') || d.includes('breathless') || d.includes('chest pain') || d.includes('severe'));
+    }) ? 'Yes' : 'No';
+    return { key, dateDisplay, symptoms, symptomsArray, tags, impact, emotions, maxSev, red };
+  });
+
+  async function judgeTimeline(reason: string, rows: DayRow[]): Promise<DayRow[]> {
+    try {
+      if (!openaiApiKey) {
+        const r = String(reason || '').toLowerCase();
+        const tokens = new Set(r.split(/[^a-z0-9]+/i).filter(Boolean));
+        const score = (row: DayRow) => {
+          const nameHit = row.symptomsArray.some(n => {
+            const w = String(n || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+            return w.some(x => tokens.has(x));
+          }) ? 1 : 0;
+          const tagHit = row.tags.some(t => tokens.has(String(t || '').toLowerCase())) ? 0.5 : 0;
+          const sev = (row.maxSev || 0) / 10;
+          // Recency bias via sortedDates order is already applied; add small tie-breaker by key string
+          const recencyBias = 0; // already sorted
+          return nameHit + tagHit + sev + recencyBias;
+        };
+        return rows.slice().sort((a, b) => score(b) - score(a)).slice(0, 7);
+      }
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0.1,
+          max_tokens: 120,
+          messages: [
+            { role: 'system', content: 'Select and rank the most relevant days to the GP appointment reason using UK clinical judgement. Strongly prefer days where symptom names or database tags match (exactly or semantically) the reason for appointment. Secondarily, prefer higher severity and recent timing. Return strict JSON: {"order":[index...]}. No commentary.' },
+            { role: 'user', content: `Reason: ${reason || '—'}` },
+            { role: 'user', content: `Days: ${JSON.stringify(rows.map((r, i) => ({ i, date: r.dateDisplay, symptoms: r.symptomsArray, tags: r.tags, maxSev: r.maxSev, impact: r.impact })))}` }
+          ]
+        })
+      });
+      const data = await res.json();
+      const parsed = (() => { try { return JSON.parse((data?.choices?.[0]?.message?.content || '').trim()); } catch { return null; } })();
+      const order: number[] = Array.isArray(parsed?.order) ? parsed.order.filter((n: any) => Number.isInteger(n)) : [];
+      const ranked = order.map((i: number) => rows[i]).filter(Boolean).slice(0, 7);
+      return ranked.length ? ranked : rows.slice(0, 7);
+    } catch {
+      return rows.slice(0, 7);
+    }
+  }
+
+  const rankedRows = await judgeTimeline(await composeReason(appointmentReason), dayRows);
   const timelineTable: PDFTableData = {
-    headers: ['Date', 'Symptoms Mentioned', 'Simpli Insight (1 sentence)', 'Functional Impact', 'Emotion', 'Max Severity', 'Red Flags'],
-    rows: sortedDates.map(key => {
-      const logs = byDate.get(key)!;
-      const dateDisplay = new Date(key).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' });
-      const symptoms = Array.from(new Set(logs.map(l => String(l.symptom_name || l.symptom_data?.symptom || '—')))).join(', ');
-      const impacts = Array.from(new Set(logs.map(l => String(l.functional_impact || l.symptom_data?.report?.functionalImpact || '').trim()).filter(Boolean)));
-      const impact = impacts.length ? (impacts.join(' | ').slice(0, 50) + (impacts.join(' | ').length > 50 ? '…' : '')) : '—';
-      const emotions = (() => {
-        const bucket = new Set<string>();
-        for (const l of logs) {
-          const desc = String(l.symptom_data?.description || '').toLowerCase();
-          if (!desc) continue;
-          if (desc.includes('anxious')) bucket.add('Anxious');
-          if (desc.includes('tearful')) bucket.add('Tearful');
-          if (desc.includes('frustrated')) bucket.add('Frustrated');
-          if (desc.includes('depressed')) bucket.add('Low mood');
-        }
-        return bucket.size ? Array.from(bucket).join(', ') : '—';
-      })();
-      const sevNums = logs.map(l => parseInt(String(l.severity_scale ?? l.symptom_data?.socrates?.severity ?? '')) || 0);
-      const maxSev = Math.max(...sevNums, 0);
-      const redFlags = logs.some(l => {
-        const d = String(l.symptom_data?.description || '').toLowerCase();
-        const s = parseInt(String(l.symptom_data?.socrates?.severity || l.severity_scale || '0')) || 0;
-        return (s >= 8 || d.includes('syncope') || d.includes('breathless') || d.includes('chest pain') || d.includes('severe'));
-      }) ? 'Yes' : 'No';
-      const oneLineInsight = (() => {
-        const parts: string[] = [];
-        if (maxSev > 0) parts.push(`Max severity ${maxSev}/10`);
-        const triggers = Array.from(new Set(logs.map(l => String(l.triggers || l.symptom_data?.report?.triggers || '').trim()).filter(Boolean)));
-        if (triggers.length) parts.push(`Triggers: ${triggers.slice(0, 2).join(', ')}`);
-        return parts.length ? parts.join('; ') : '—';
-      })();
-      return [dateDisplay, symptoms, oneLineInsight, impact, emotions, maxSev ? `${maxSev}/10` : '—', redFlags];
+    headers: ['Date', 'Symptoms Mentioned', 'Sympli Insight (one line)', 'Functional Impact', 'Emotion', 'Max Severity', 'Red Flags'],
+    rows: rankedRows.map(r => {
+      const oneLineInsight = r.maxSev > 0 ? `max severity ${r.maxSev}/10` : '—';
+      return [r.dateDisplay, r.symptoms, oneLineInsight, r.impact, r.emotions, r.maxSev ? `${r.maxSev}/10` : '—', r.red];
     })
   };
 
-  // Build Symptom Summaries table (recent logs)
-  const recentForSummaries = (symptomLogs || []).slice(0, 10);
-  const summariesTable: PDFTableData = {
-    headers: ['Date & Time', 'Symptom', 'Summary'],
-    rows: recentForSummaries.map(log => {
-      const dt = new Date(log.created_at);
-      const dtDisplay = dt.toLocaleString('en-GB', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-      const symptom = String(log.symptom_name || log.symptom_data?.symptom || '—');
-      const sevNum = parseInt(String(log.severity_scale ?? log.symptom_data?.socrates?.severity ?? '')) || 0;
-      const timeCourse = String(log.time_course || log.symptom_data?.socrates?.timeCourse || '').trim();
-      const triggers = String(log.triggers || log.symptom_data?.report?.triggers || '').trim();
-      const impact = String(log.functional_impact || log.symptom_data?.report?.functionalImpact || '').trim();
-      const character = String(log.symptom_data?.socrates?.character || '').trim();
-      const summaryParts: string[] = [];
-      if (sevNum) summaryParts.push(`Severity ${sevNum}/10`);
-      if (character) summaryParts.push(character);
-      if (timeCourse) summaryParts.push(timeCourse);
-      if (triggers) summaryParts.push(`Triggers: ${triggers}`);
-      if (impact) summaryParts.push(`Impact: ${impact}`);
-      const summaryJoined = summaryParts.join('; ');
-      const summary = summaryJoined ? (summaryJoined.length > 110 ? summaryJoined.slice(0, 110) + '…' : summaryJoined) : '—';
-      return [dtDisplay, symptom, summary];
-    })
-  };
+  // Build Symptom Summaries table (recent unique logs by symptom)
+  const recentSorted = (symptomLogs || [])
+    .slice()
+    .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const seenBySymptom = new Set<string>();
+  const recentUnique = recentSorted.filter((log: any) => {
+    const name = String(log.symptom_name || log.symptom_data?.symptom || '—');
+    if (seenBySymptom.has(name)) return false;
+    seenBySymptom.add(name);
+    return true;
+  }).slice(0, 10);
+
+  // Remove separate symptom summaries section per request (handled by frequency + timeline)
 
   // Parse appointment date/time for display
   let apptDisplay = appointmentDate || '';
@@ -377,7 +523,46 @@ async function generatePDFContent(data: PDFData): Promise<PDFContent> {
     }
   };
 
-  const clinicalReason = appointmentReason ? await rephraseClinically(appointmentReason) : '';
+  async function composeReason(userReason?: string) {
+    try {
+      // Build a compact JSON summary of the last 5 logs to inform the reason
+      const recent = (symptomLogs || []).slice(0, 5).map((l: any) => ({
+        when: l.created_at,
+        name: String(l.symptom_name || l.symptom_data?.symptom || ''),
+        severity: Number(l.severity_scale || l?.symptom_data?.socrates?.severity || 0) || 0,
+        impact: String(l.functional_impact || l?.symptom_data?.report?.functionalImpact || '').trim(),
+        character: String(l?.symptom_data?.socrates?.character || '').trim(),
+      }));
+      const fallback = (() => {
+        const top = recent[0];
+        if (!top) return (userReason || '').trim();
+        const sev = top.severity ? ` (severity ${top.severity}/10)` : '';
+        return `${top.name}${sev}`.trim();
+      })();
+      if (!openaiApiKey) return fallback || '';
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0.2,
+          max_tokens: 80,
+          messages: [
+            { role: 'system', content: 'You are a UK NHS clinical summariser. Decide the single most likely reason for a GP appointment using recent structured logs as primary evidence; treat free-text as supporting. Return ONE short sentence (<=18 words), no preface.' },
+            { role: 'user', content: `Free‑text reason (optional): ${String(userReason || '').trim() || '—'}` },
+            { role: 'user', content: `Recent logs (most recent first): ${JSON.stringify(recent)}` }
+          ]
+        })
+      });
+      const data = await res.json();
+      const s = String(data?.choices?.[0]?.message?.content || '').trim();
+      return s || fallback || '';
+    } catch {
+      return (userReason || '').trim();
+    }
+  }
+
+  const clinicalReason = await composeReason(appointmentReason);
   const clinicalUnderstanding = doctorUnderstanding ? await rephraseClinically(doctorUnderstanding) : '';
   const pdfContent: PDFContent = {
     title: 'Medical Appointment Report by Sympli',
@@ -388,6 +573,7 @@ async function generatePDFContent(data: PDFData): Promise<PDFContent> {
       anonymisedId: anonymisedId,
       appointmentDate: apptDisplay
     },
+    confirmed: Boolean(confirmed),
     originalLanguage: originalLanguage,
     userEdited: Boolean(userEdited),
     sections: [
@@ -403,7 +589,7 @@ async function generatePDFContent(data: PDFData): Promise<PDFContent> {
         content: symptomTableData
       },
       {
-        title: `3. SIMPLI INSIGHT (Clinically Relevant Bullet Summary)${userEdited ? ' (User-edited)' : ''}`,
+        title: `3. SYMPLI INSIGHT (Clinically Relevant Summary)${userEdited ? ' (User-edited)' : ''}`,
         content: insightsText
       },
       {
@@ -414,10 +600,7 @@ async function generatePDFContent(data: PDFData): Promise<PDFContent> {
         title: `5. QUICK HISTORY OF PATIENT${userEdited ? ' (User-edited)' : ''}`,
         content: historyTableData
       },
-      {
-        title: `6. SYMPTOM SUMMARIES (Recent Logs)${userEdited ? ' (User-edited)' : ''}`,
-        content: summariesTable
-      },
+      // Removed section 6 per spec – summaries folded into timeline/frequency
       {
         title: '7. ATTACHMENTS (To be implemented)',
         content: 'Attachments uploaded by the patient will appear here in a future update.'

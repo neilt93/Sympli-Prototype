@@ -40,6 +40,8 @@ export async function POST(request: NextRequest) {
     const symptomData = body.symptomData;
     const socratesData = body.socratesData || {};
     const reportData = body.reportData || {};
+    const tags: string[] = Array.isArray(body.tags) ? body.tags.slice(0, 12) : [];
+    const chatTranscript = Array.isArray(body.chatTranscript) ? body.chatTranscript : [];
     
     // Map symptom type to human-readable name
     const symptomNameMap: Record<string, string> = {
@@ -60,10 +62,14 @@ export async function POST(request: NextRequest) {
     }
     
     // Create symptom data in the enhanced format for the database schema
+    const displaySymptomName = (symptomData?.customName && String(symptomData.customName).trim())
+      ? String(symptomData.customName).trim()
+      : (symptomNameMap[symptomData.symptomType] || 'Unknown Symptom');
+
     const symptomLogData = {
       user_id: user.id,
       symptom_type: symptomData.symptomType,
-      symptom_name: symptomNameMap[symptomData.symptomType] || 'Unknown Symptom',
+      symptom_name: displaySymptomName,
       is_new: symptomData.isNew === 'new',
       severity_scale: severityScale,
       description: symptomData.description,
@@ -83,17 +89,25 @@ export async function POST(request: NextRequest) {
       additional_context: {
         llmResponses: symptomData.llmResponses,
         socratesData: socratesData,
-        reportData: reportData
+        reportData: reportData,
+        custom_name: symptomData.customName || null
       },
       symptom_data: {
         symptom: symptomData.symptomType,
         type: symptomData.isNew,
         description: symptomData.description,
+        customName: symptomData.customName || null,
         socrates: socratesData,
         report: reportData,
         llmResponses: symptomData.llmResponses,
         created_at: new Date().toISOString()
       },
+      tags: tags.length ? tags : null,
+      metadata: {
+        generated_by: 'chat-flow',
+        version: 1
+      },
+      chat_transcript: chatTranscript,
       data_retention_until: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
     };
 

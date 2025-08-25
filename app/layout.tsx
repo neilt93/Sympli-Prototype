@@ -15,10 +15,10 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Sympli - AI Health Companion',
+  title: 'Sympli – AI Health Companion',
   description: 'Voice-first AI health companion that helps you log symptoms, track patterns, and generate reports for your GP.',
   keywords: ['health', 'AI', 'voice', 'symptoms', 'medical', 'PWA'],
-  authors: [{ name: 'Sympli Team' }],
+  authors: [{ name: 'Sympli' }],
   creator: 'Sympli',
   publisher: 'Sympli',
   formatDetection: {
@@ -26,21 +26,21 @@ export const metadata: Metadata = {
     address: false,
     telephone: false,
   },
-  metadataBase: new URL('https://sympli-health.com'),
+  metadataBase: new URL('https://sympli.ai'),
   alternates: {
     canonical: '/',
   },
   openGraph: {
-    title: 'Sympli - AI Health Companion',
+    title: 'Sympli – AI Health Companion',
     description: 'Voice-first AI health companion that helps you log symptoms, track patterns, and generate reports for your GP.',
-    url: 'https://sympli-health.com',
-    siteName: 'Sympli Health',
+    url: 'https://sympli.ai',
+    siteName: 'Sympli',
     locale: 'en_US',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sympli - AI Health Companion',
+    title: 'Sympli – AI Health Companion',
     description: 'Voice-first AI health companion that helps you log symptoms, track patterns, and generate reports for your GP.',
   },
   robots: {
@@ -100,6 +100,24 @@ export default function RootLayout({
         <link rel="shortcut icon" href="/favicon.ico" />
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" />
         <script src="https://accounts.google.com/gsi/client" async defer></script>
+        {/* Dev-only safeguard: unregister old service workers and clear caches to prevent 404s for /_next assets */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function(){
+            try {
+              if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+                var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+                if (isLocal) {
+                  navigator.serviceWorker.getRegistrations().then(function(regs){
+                    regs.forEach(function(r){ try { r.unregister(); } catch(e){} });
+                  });
+                  if (window.caches && caches.keys) {
+                    caches.keys().then(function(keys){ keys.forEach(function(k){ try { caches.delete(k); } catch(e){} }); });
+                  }
+                }
+              }
+            } catch(_){}
+          })();
+        ` }} />
       </head>
       <body className={`${inter.variable} font-sans`}>
         <Providers>

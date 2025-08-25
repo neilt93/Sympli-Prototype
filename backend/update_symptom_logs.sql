@@ -26,7 +26,10 @@ ADD COLUMN IF NOT EXISTS treatment_response text,
 ADD COLUMN IF NOT EXISTS progress_description text,
 ADD COLUMN IF NOT EXISTS additional_context jsonb,
 ADD COLUMN IF NOT EXISTS extracted_entities jsonb,
-ADD COLUMN IF NOT EXISTS symptom_signature text;
+ADD COLUMN IF NOT EXISTS symptom_signature text,
+ADD COLUMN IF NOT EXISTS tags jsonb,
+ADD COLUMN IF NOT EXISTS metadata jsonb,
+ADD COLUMN IF NOT EXISTS chat_transcript jsonb;
 
 -- Create new indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_symptom_logs_type ON public.symptom_logs(symptom_type);
@@ -36,6 +39,8 @@ CREATE INDEX IF NOT EXISTS idx_symptom_logs_severity ON public.symptom_logs(seve
 CREATE INDEX IF NOT EXISTS idx_symptom_logs_user_type_name ON public.symptom_logs(user_id, symptom_type, symptom_name);
 CREATE INDEX IF NOT EXISTS idx_symptom_logs_signature ON public.symptom_logs(user_id, symptom_type, symptom_signature);
 CREATE INDEX IF NOT EXISTS idx_symptom_logs_entities_gin ON public.symptom_logs USING GIN ((extracted_entities));
+CREATE INDEX IF NOT EXISTS idx_symptom_logs_tags_gin ON public.symptom_logs USING GIN ((tags));
+CREATE INDEX IF NOT EXISTS idx_symptom_logs_chat_gin ON public.symptom_logs USING GIN ((chat_transcript));
 
 -- Update the anonymization function to handle new fields
 CREATE OR REPLACE FUNCTION public.anonymize_user_data(user_uuid uuid)

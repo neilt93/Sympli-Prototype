@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'next/navigation';
+import { Mic, Square } from 'lucide-react';
 
 interface SymptomData {
   symptomType: 'headache' | 'fatigue' | 'side_effect' | 'pregnancy' | 'other';
@@ -92,12 +93,20 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
   };
 
   const [messages, setMessages] = useState<ChatMessage[]>([initialPrologueMessage, initialMenuMessage]);
+  const [chatForSave, setChatForSave] = useState<Array<{ role: 'agent'|'user'|'system'; content: string }>>([
+    { role: 'agent', content: initialPrologueMessage.content },
+    { role: 'agent', content: initialMenuMessage.content }
+  ]);
   const [currentSymptomData, setCurrentSymptomData] = useState<SymptomData>({ ...defaultSymptom });
   const [isLoading, setIsLoading] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const questionIndexRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [userInput, setUserInput] = useState('');
+  const questionAbortRef = useRef<AbortController | null>(null);
+  const newId = () => (globalThis.crypto?.randomUUID?.() || String(Date.now() + Math.random()));
+  const awaitingOtherConfirmRef = useRef<{ candidate: string } | null>(null);
+  const awaitingSimilarConfirmRef = useRef<boolean>(false);
 
   // Voice
   const [isRecording, setIsRecording] = useState(false);
@@ -111,6 +120,7 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
   const timelineAllCountRef = useRef(5);
   const gpFlowStateRef = useRef<{ step: number; answers: Record<string, string> } | null>(null);
   const awaitingOtherNameRef = useRef(false);
+  const sessionStartIdxRef = useRef(0);
 
   useEffect(() => {
     const getUser = async () => {
@@ -125,11 +135,11 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const pushAgentQuestion = (text: string, options?: string[], inputType: 'text' | 'buttons' | 'textarea' = 'text') => {
-    setMessages(prev => [...prev, { id: Date.now().toString(), type: 'agent', content: text, timestamp: new Date(), isQuestion: true, options, inputType }]);
+    setMessages(prev => [...prev, { id: newId(), type: 'agent', content: text, timestamp: new Date(), isQuestion: true, options, inputType }]);
+    setChatForSave(prev => [...prev, { role: 'agent', content: text }]);
   };
 
   const showMainMenu = () => {
-    pushAgentQuestion('What would you like to do today?', ['Log a Symptom', 'Generate PDF Report', 'View Timeline'], 'buttons');
     // reset flow state
     questionIndexRef.current = 0;
     setCurrentQuestionIndex(0);
@@ -140,13 +150,19 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
     gpFlowStateRef.current = null;
     setIsLoading(false);
     setUserInput('');
-    setMessages(prev => [...prev, { id: Date.now().toString(), type: 'system', content: 'Returned to main menu.', timestamp: new Date() }]);
+    // Append in desired order: system notice first, then menu question
+    setMessages(prev => [
+      ...prev,
+      { id: newId(), type: 'system', content: 'Returned to main menu.', timestamp: new Date() },
+      { id: newId(), type: 'agent', content: 'What would you like to do today?', timestamp: new Date(), isQuestion: true, options: ['Log a Symptom', 'Generate PDF Report', 'View Timeline'], inputType: 'buttons' }
+    ]);
   };
 
   const resetForNewLog = () => {
     questionIndexRef.current = 0;
     setCurrentQuestionIndex(0);
     setCurrentSymptomData({ ...defaultSymptom });
+    sessionStartIdxRef.current = messages.length;
     pushAgentQuestion('What are you tracking today?', ['Headache', 'Fatigue', 'Side Effect', 'Pregnancy', 'Other'], 'buttons');
   };
 
@@ -156,7 +172,8 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
 
   const handleTopChoice = async (choice: string, messageId: string) => {
     markMessageAnswered(messageId, choice);
-    setMessages(prev => [...prev, { id: Date.now().toString(), type: 'user', content: choice, timestamp: new Date() }]);
+    setMessages(prev => [...prev, { id: newId(), type: 'user', content: choice, timestamp: new Date() }]);
+    setChatForSave(prev => [...prev, { role: 'user', content: choice }]);
     if (choice === 'Log a Symptom') return resetForNewLog();
     if (choice === 'Generate PDF Report') { startGPFlow(); return; }
     if (choice === 'View Timeline') {
@@ -170,14 +187,56 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
     const button = event?.target as HTMLButtonElement;
     if (button?.disabled) return;
     if (button) button.disabled = true;
+
+    // Handle confirmation for custom name from "Other" flow
+    // Handle confirmation for similar previous logs
+    if (awaitingSimilarConfirmRef.current && (option === 'Yes, same pain' || option === 'No, different')) {
+      awaitingSimilarConfirmRef.current = false;
+      markMessageAnswered(messageId, option);
+      setMessages(prev => [...prev, { id: newId(), type: 'user', content: option, timestamp: new Date() }]);
+      setChatForSave(prev => [...prev, { role: 'user', content: option }]);
+      if (option === 'No, different') {
+        const updatedData = { ...currentSymptomData, isNew: 'new' as const };
+        setCurrentSymptomData(updatedData);
+        questionIndexRef.current = 2;
+        setCurrentQuestionIndex(2);
+        await getNextQuestion(2, undefined, updatedData);
+        return;
+      }
+      // same pain → continue ongoing flow
+      questionIndexRef.current = 2;
+      setCurrentQuestionIndex(2);
+      await getNextQuestion(2);
+      return;
+    }
+    if (awaitingOtherConfirmRef.current && (option === 'Yes' || option === 'No')) {
+      if (option === 'Yes') {
+        const candidate = awaitingOtherConfirmRef.current.candidate;
+        awaitingOtherConfirmRef.current = null;
+        markMessageAnswered(messageId, option);
+        setMessages(prev => [...prev, { id: newId(), type: 'user', content: option, timestamp: new Date() }]);
+        setCurrentSymptomData(prev => ({ ...prev, customName: candidate }));
+        pushAgentQuestion('Is this a new symptom or something ongoing?', ['New', 'Ongoing'], 'buttons');
+        questionIndexRef.current = 0;
+        setCurrentQuestionIndex(0);
+        return;
+      } else {
+        awaitingOtherConfirmRef.current = null;
+        awaitingOtherNameRef.current = true;
+        markMessageAnswered(messageId, option);
+        setMessages(prev => [...prev, { id: newId(), type: 'user', content: option, timestamp: new Date() }]);
+        pushAgentQuestion('No problem — what should I call it?', undefined, 'text');
+        return;
+      }
+    }
     // Handle GP PDF flow actions FIRST to avoid falling through to symptom flow
     if (gpFlowStateRef.current && ['Confirm', 'Re-record', 'Download PDF', 'Edit anything', 'Back to menu'].includes(option)) {
       if (option === 'Back to menu') { markMessageAnswered(messageId, option); showMainMenu(); return; }
       if (option === 'Confirm') {
         markMessageAnswered(messageId, option);
         setMessages(prev => [...prev,
-          { id: Date.now().toString(), type: 'agent', content: `Preview – Executive Summary and Most Recent Entries will be generated based on your logs.`, timestamp: new Date() },
-          { id: (Date.now()+1).toString(), type: 'agent', content: `Ready to generate your PDF now?`, timestamp: new Date(), isQuestion: true, inputType: 'buttons', options: ['Download PDF', 'Edit anything', 'Back to menu'] }
+          { id: newId(), type: 'agent', content: `Preview – Executive Summary and Most Recent Entries will be generated based on your logs.`, timestamp: new Date() },
+          { id: newId(), type: 'agent', content: `Ready to generate your PDF now?`, timestamp: new Date(), isQuestion: true, inputType: 'buttons', options: ['Download PDF', 'Edit anything', 'Back to menu'] }
         ]);
         return;
       }
@@ -188,7 +247,7 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
         try {
           const token = await getAuthToken();
           const st = gpFlowStateRef.current;
-          const res = await fetch('/api/symptoms/pdf', {
+          let res = await fetch('/api/symptoms/pdf', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token || ''}` },
             body: JSON.stringify({
@@ -220,11 +279,11 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
             pushAgentQuestion('Would you like to go back to the main menu?', ['Back to menu'], 'buttons');
           } else {
             pushAgentQuestion('Sorry, I could not generate the PDF right now.');
-            pushAgentQuestion('Would you like to go back to the main menu?', ['Back to menu'], 'buttons');
+            pushAgentQuestion('Try again?', ['Download PDF', 'Back to menu'], 'buttons');
           }
         } catch {
           pushAgentQuestion('Sorry, I could not generate the PDF right now.');
-          pushAgentQuestion('Would you like to go back to the main menu?', ['Back to menu'], 'buttons');
+          pushAgentQuestion('Try again?', ['Download PDF', 'Back to menu'], 'buttons');
         }
         return;
       }
@@ -233,7 +292,7 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
     if (awaitingPostSaveRef.current && (option === 'Yes' || option === 'No')) {
       markMessageAnswered(messageId, option);
       awaitingPostSaveRef.current = false;
-      setMessages(prev => [...prev, { id: Date.now().toString(), type: 'user', content: option, timestamp: new Date() }]);
+      setMessages(prev => [...prev, { id: newId(), type: 'user', content: option, timestamp: new Date() }]);
       if (option === 'Yes') {
         return resetForNewLog();
       } else {
@@ -280,9 +339,9 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
       if (option === 'Re-record') { gpFlowStateRef.current = { step: 0, answers: {} }; askNextGPQuestion(0); return; }
       if (option === 'Download PDF') {
         try {
-          const token = await getAuthToken();
+          let token = await getAuthToken();
           const st = gpFlowStateRef.current;
-          const res = await fetch('/api/symptoms/pdf', {
+          let res = await fetch('/api/symptoms/pdf', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token || ''}` },
             body: JSON.stringify({
@@ -294,6 +353,26 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
               relevantSymptoms: []
             })
           });
+          // If unauthorized, refresh session and retry once
+          if (res.status === 401) {
+            try {
+              await supabase.auth.refreshSession();
+              const { data: { session } } = await supabase.auth.getSession();
+              token = session?.access_token || token;
+              res = await fetch('/api/symptoms/pdf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token || ''}` },
+                body: JSON.stringify({
+                  appointmentDate: st?.answers.appointmentDate || '',
+                  appointmentReason: st?.answers.appointmentReason || '',
+                  doctorUnderstanding: st?.answers.doctorUnderstanding || '',
+                  medicationsTried: st?.answers.medicationsTried || '',
+                  recentTests: st?.answers.recentTests || '',
+                  relevantSymptoms: []
+                })
+              });
+            } catch {}
+          }
           const data = await res.json();
           if (res.ok && data.pdfDataUri) {
             // Build filename: <name-or-email>-<YYYY-MM-DD>.pdf (prefer appointment date)
@@ -347,7 +426,7 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
       // For 'Other', capture a custom name first
       if (selectedType === 'other') {
         awaitingOtherNameRef.current = true;
-        pushAgentQuestion('You chose Other — what symptom do you mean? Please name it in your own words.', undefined, 'text');
+        pushAgentQuestion('Which symptom would you like to log? Please name it in your own words.', undefined, 'text');
       } else {
         pushAgentQuestion('Is this a new symptom or something ongoing?', ['New', 'Ongoing'], 'buttons');
         questionIndexRef.current = 0; // we will skip API base later
@@ -367,6 +446,11 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
       setCurrentSymptomData(updatedData);
       questionIndexRef.current = 2; // skip baseQuestions[0..1]
       setCurrentQuestionIndex(2);
+      // If ongoing, first check for similar previous logs and ask confirmation if found
+      if (updatedData.isNew === 'ongoing') {
+        const asked = await checkPreviousSymptoms(true);
+        if (asked) return;
+      }
       await getNextQuestion(2, localMessages, updatedData);
       return;
     }
@@ -387,18 +471,53 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
       return;
     }
 
-    // Grey out the most recent unanswered agent question (if any)
-    setMessages(prev => {
-      const updated = [...prev];
-      for (let i = updated.length - 1; i >= 0; i--) {
-        const m = updated[i];
-        if (m.type === 'agent' && m.isQuestion && !m.answered) {
-          updated[i] = { ...m, answered: true } as any;
-          break;
+    // Grey out the most recent unanswered agent question (if any) and build a local history snapshot
+    const updated = [...messages];
+    for (let i = updated.length - 1; i >= 0; i--) {
+      const m = updated[i];
+      if (m.type === 'agent' && m.isQuestion && !m.answered) {
+        updated[i] = { ...m, answered: true } as any;
+        break;
+      }
+    }
+    const userMsg: ChatMessage = { id: newId(), type: 'user', content: text, timestamp: new Date() };
+    const localMessages = [...updated, userMsg];
+    setMessages(localMessages);
+    setChatForSave(prev => [...prev, { role: 'user', content: text }]);
+    // Capture structured fields based on the last question asked
+    try {
+      const lastQ = (() => {
+        for (let i = updated.length - 1; i >= 0; i--) {
+          const m = updated[i];
+          if (m.type === 'agent' && m.isQuestion) return m.content || '';
+        }
+        return '';
+      })().toString().toLowerCase();
+      // Severity extraction
+      if (/\b(0\s*[–-]?\s*10|scale|severity)\b/.test(lastQ)) {
+        const m = text.match(/\b(10|[0-9])\b/);
+        if (m) {
+          setCurrentSymptomData(prev => ({
+            ...prev,
+            socratesData: {
+              site: prev.socratesData?.site || '',
+              onset: prev.socratesData?.onset || '',
+              character: prev.socratesData?.character || '',
+              radiation: prev.socratesData?.radiation || '',
+              associations: prev.socratesData?.associations || '',
+              timeCourse: prev.socratesData?.timeCourse || '',
+              exacerbatingFactors: prev.socratesData?.exacerbatingFactors || '',
+              severity: String(m[1]),
+              additionalContext: prev.socratesData?.additionalContext || ''
+            }
+          }));
         }
       }
-      return [...updated, { id: Date.now().toString(), type: 'user', content: text, timestamp: new Date() }];
-    });
+      // Functional impact capture
+      if (/\b(affect|impact|daily|work|sleep|exercise)\b/.test(lastQ)) {
+        setCurrentSymptomData(prev => ({ ...prev, functionalImpact: text }));
+      }
+    } catch {}
 
     // If awaiting a timeline search query
     if (awaitingTimelineSearchRef.current) {
@@ -426,28 +545,30 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
       return;
     }
 
-    // Capture custom name for 'Other'
+    // Capture custom name for 'Other' and propose a clinical term then confirm
     if (awaitingOtherNameRef.current) {
       awaitingOtherNameRef.current = false;
       const lowered = text.toLowerCase();
       const mappedType: SymptomData['symptomType'] | null =
         lowered.includes('pregnan') ? 'pregnancy' : null;
-      if (mappedType) {
-        setCurrentSymptomData(prev => ({ ...prev, customName: text, symptomType: mappedType }));
-      } else {
-        setCurrentSymptomData(prev => ({ ...prev, customName: text }));
-      }
+      const canonicalise = async (s: string): Promise<string> => {
+        try {
+          const resp = await fetch('/api/symptoms/canonicalize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: s }) });
+          const data = await resp.json();
+          return String(data?.term || s).trim();
+        } catch { return s.toLowerCase().trim(); }
+      };
+      const candidate = await canonicalise(text);
+      if (mappedType) setCurrentSymptomData(prev => ({ ...prev, symptomType: mappedType }));
+      awaitingOtherConfirmRef.current = { candidate };
       setUserInput('');
-      setMessages(prev => [...prev, { id: Date.now().toString(), type: 'agent', content: `Thanks — I'll log this as “${text}”.`, timestamp: new Date() }]);
-      pushAgentQuestion('Is this a new symptom or something ongoing?', ['New', 'Ongoing'], 'buttons');
-      questionIndexRef.current = 0;
-      setCurrentQuestionIndex(0);
+      pushAgentQuestion(`Do you want me to log this as “${candidate}”?`, ['Yes', 'No'], 'buttons');
       return;
     }
 
     updateSymptomData(text);
     setUserInput('');
-    await getNextQuestion();
+    await getNextQuestion(undefined, localMessages);
   };
 
   const updateSymptomData = (input: string) => {
@@ -471,6 +592,9 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
     overrideSymptomData?: SymptomData
   ) => {
     if (isLoading) return; // prevent concurrent
+    try { questionAbortRef.current?.abort(); } catch {}
+    const ac = new AbortController();
+    questionAbortRef.current = ac;
     setIsLoading(true);
     const idx = overrideIndex !== undefined ? overrideIndex : questionIndexRef.current;
     try {
@@ -483,7 +607,8 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
           currentSymptomData: overrideSymptomData ? overrideSymptomData : currentSymptomData,
           currentQuestionIndex: idx,
           previousMessages: overrideMessages || messages
-        })
+        }),
+        signal: ac.signal
       });
 
       if (response.ok) {
@@ -497,28 +622,54 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
         console.error('Chat-question API returned non-OK status');
         pushAgentQuestion('API error');
       }
-    } catch {
+    } catch (e: any) {
       // No fallbacks; surface API error to user
-      console.error('Chat-question API error');
-      pushAgentQuestion('API error');
+      if (e?.name === 'AbortError') {
+        // Aborted due to newer input, ignore
+      } else {
+        console.error('Chat-question API error');
+        pushAgentQuestion('API error');
+      }
     } finally {
       setIsLoading(false);
+      questionAbortRef.current = null;
     }
   };
 
-  const checkPreviousSymptoms = async () => {
+  const checkPreviousSymptoms = async (offerConfirm?: boolean) => {
     try {
       const { data: previousSymptoms, error } = await supabase
         .from('symptom_logs')
-        .select('id, created_at, symptom_type, symptom_name, severity_scale, functional_impact, triggers, patterns, treatment_response, progress_description')
+        .select('id, created_at, symptom_type, symptom_name, severity_scale, functional_impact, triggers, patterns, treatment_response, progress_description, description')
         .eq('user_id', user?.id)
         .eq('symptom_type', currentSymptomData.symptomType)
         .order('created_at', { ascending: false })
         .limit(5);
       if (!error && previousSymptoms && previousSymptoms.length > 0) {
-        setMessages(prev => [...prev, { id: Date.now().toString(), type: 'system', content: `Found ${previousSymptoms.length} previous entries for ${currentSymptomData.symptomType}.`, timestamp: new Date() }]);
+        if (offerConfirm) {
+          // Keyword match on customName/description to ensure relevance
+          const needle = (currentSymptomData.customName || currentSymptomData.description || '').toLowerCase();
+          const tokens = Array.from(new Set(needle.split(/[^a-z0-9]+/).filter(w => w.length >= 3)));
+          const relevant = previousSymptoms.filter((p) => {
+            const hay = [p.symptom_name, p.description, p.functional_impact, p.treatment_response].filter(Boolean).join(' ').toLowerCase();
+            let score = 0; for (const t of tokens) { if (hay.includes(t)) score++; }
+            return score >= Math.max(1, Math.ceil(tokens.length * 0.3));
+          });
+          if (relevant.length === 0) return false;
+          const dates = relevant.map((p) => new Date(p.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })).join(', ');
+          awaitingSimilarConfirmRef.current = true;
+          setMessages(prev => [
+            ...prev,
+            { id: newId(), type: 'system', content: `I found similar logs on: ${dates}`, timestamp: new Date() },
+            { id: newId(), type: 'agent', content: 'Are you referring to the same ongoing pain?', timestamp: new Date(), isQuestion: true, inputType: 'buttons', options: ['Yes, same pain', 'No, different'] }
+          ]);
+          return true;
+        } else {
+          setMessages(prev => [...prev, { id: newId(), type: 'system', content: `Found ${previousSymptoms.length} previous entries for ${currentSymptomData.symptomType}.`, timestamp: new Date() }]);
+        }
       }
     } catch {}
+    return false;
   };
 
   const completeSymptomLog = async () => {
@@ -536,7 +687,9 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
             patterns: currentSymptomData.patterns,
             treatmentResponse: currentSymptomData.treatmentResponse,
             progress: currentSymptomData.progress
-          }
+          },
+          tags: [],
+          chatTranscript: chatForSave.slice(-200) // cap size
         })
       });
       if (response.ok) {
@@ -572,7 +725,111 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
           lines.push(recentNotes);
         }
         const summaryText = lines.join('\n');
-        setMessages(prev => [...prev, { id: Date.now().toString(), type: 'agent', content: summaryText, timestamp: new Date() }]);
+        // Build Final Log Format per spec using chat history since the current session start
+        const sessionMessages = messages.slice(sessionStartIdxRef.current);
+        type QA = { label: string; answer: string };
+        const inferLabel = (q: string): string | null => {
+          const s = q.toLowerCase();
+          if (/\bwhere|location|site\b/.test(s)) return 'Location';
+          if (/\bonset|when did|start|how long|duration\b/.test(s)) return 'Onset';
+          if (/\bcharacter|type|feel like|describe\b/.test(s)) return 'Character';
+          if (/\bradiat/.test(s)) return 'Radiation';
+          if (/\bassociated|other symptoms|with it\b/.test(s)) return 'Associated Symptoms';
+          if (/\bpattern|timing|intermittent|constant\b/.test(s)) return 'Pattern';
+          if (/\btrigger|reliev|what makes.*(better|worse)|helps\b/.test(s)) return 'Triggers/Relievers';
+          if (/\bseverity|0\s*[-–—]\s*10|0–10|0-10\b/.test(s)) return 'Severity';
+          if (/\bimpact|affect.*(work|sleep|exercise|daily)\b/.test(s)) return 'Functional Impact';
+          if (/\bemotion|feel emotionally|mood\b/.test(s)) return 'Emotional Impact';
+          return null;
+        };
+        const qa: QA[] = [];
+        for (let i = 0; i < sessionMessages.length; i++) {
+          const m = sessionMessages[i];
+          if (m.type === 'agent' && m.isQuestion) {
+            const label = inferLabel(m.content || '');
+            if (!label) continue;
+            const answer = (() => {
+              for (let j = i + 1; j < sessionMessages.length; j++) {
+                const n = sessionMessages[j];
+                if (n.type === 'user') return n.content.trim();
+                if (n.type === 'agent' && n.isQuestion) break;
+              }
+              return '';
+            })();
+            if (answer) qa.push({ label, answer });
+          }
+        }
+        // Presenting complaint
+        const presenting = (currentSymptomData.description || '').trim();
+        const pc = presenting ? presenting.charAt(0).toUpperCase() + presenting.slice(1) : displaySymptom;
+        // Tags
+        const tags: string[] = [];
+        const typeTag = (currentSymptomData.customName || displaySymptom).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        if (typeTag) tags.push(`#${typeTag}`);
+        const sev = (() => {
+          const sevQA = qa.find(x => x.label === 'Severity');
+          if (!sevQA) return '';
+          const n = parseInt(sevQA.answer.match(/\b(\d{1,2})\b/)?.[1] || '');
+          if (!isNaN(n)) {
+            if (n <= 3) return '#mild';
+            if (n <= 6) return '#moderate';
+            return '#severe';
+          }
+          return '';
+        })();
+        if (sev) tags.push(sev);
+        if (qa.find(x => x.label === 'Functional Impact')) tags.push('#functional-impact');
+        if (qa.find(x => x.label === 'Emotional Impact')) tags.push('#emotional-impact');
+        const statusTag = currentSymptomData.isNew === 'new' ? '#new-symptom' : '#ongoing-symptom';
+        tags.push(statusTag);
+        const sysTag = (() => {
+          const text = [presenting, ...qa.map(x => x.answer)].join(' ').toLowerCase();
+          if (/cough|breath|wheeze|chest/.test(text)) return '#respiratory-pattern';
+          if (/stomach|abdominal|nausea|vomit|bowel|diarrhoea|diarrhea/.test(text)) return '#digestive-pattern';
+          return '';
+        })();
+        if (sysTag) tags.push(sysTag);
+        const ts = new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' }).replace(',', '');
+        const normalise = (text: string): string => {
+          const t = String(text || '').trim();
+          if (!t) return t;
+          const lower = t.toLowerCase();
+          if (['no', 'none', 'nil', 'n/a'].includes(lower)) return 'None';
+          let fixed = t
+            .replace(/\ba\s*onth\b/gi, 'a month')
+            .replace(/\bteh\b/gi, 'the')
+            .replace(/\bsevr?e\b/gi, 'severe');
+          if (/[^a-zA-Z0-9\s\-,:.'()]/.test(fixed)) return `"${t}"`;
+          return fixed;
+        };
+        const followupLines = qa.map(q => `- ${q.label}: ${normalise(q.answer)}`);
+        const finalLog = [
+          'Final Log Format (Structured, Chat-Generated)',
+          '',
+          'Presenting Complaint:',
+          `“${pc}”`,
+          '',
+          '---',
+          '',
+          'Follow-Up Summary:',
+          ...followupLines,
+          '',
+          '---',
+          'Tags:',
+          tags.join(' '),
+          '',
+          '---',
+          'Attachments:',
+          'None',
+          '',
+          '---',
+          '✅ Confirmed by User: Yes',
+          '✅ Consent Given: Yes',
+          `🕒 Timestamp: ${ts} BST`,
+          '',
+          '---'
+        ].join('\n');
+        setMessages(prev => [...prev, { id: Date.now().toString(), type: 'agent', content: finalLog, timestamp: new Date() }]);
 
         awaitingPostSaveRef.current = true;
         pushAgentQuestion('Thank you! Your symptom has been logged successfully. Would you like to log another?', ['Yes', 'No'], 'buttons');
@@ -669,18 +926,46 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
           <p className={`text-sm ${isAnsweredQuestion ? 'text-gray-600' : 'text-gray-800'} whitespace-pre-wrap`}>{message.content}</p>
           {message.renderType === 'timeline' && message.logs && (
             <div className="mt-3 space-y-2">
-              {message.logs.map((log) => (
-                <div key={log.id} className="border border-gray-200 rounded-md bg-white px-3 py-2">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium text-gray-900">{log.symptom_name || log.symptom_type}</div>
-                    <div className="text-xs text-gray-500">{new Date(log.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</div>
+              {message.logs.map((log) => {
+                const sevVal = typeof log.severity_scale === 'number' ? log.severity_scale : undefined;
+                const badge = (() => {
+                  if (typeof sevVal !== 'number') return null;
+                  const cls = sevVal <= 3
+                    ? 'bg-gray-100 text-gray-700'
+                    : sevVal <= 6
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : 'bg-red-100 text-red-700';
+                  return <span className={`text-[10px] px-2 py-0.5 rounded ${cls}`}>Severity {sevVal}/10</span>;
+                })();
+                return (
+                  <div key={log.id} className="border border-gray-200 rounded-md bg-white px-3 py-2">
+                    <div className="grid grid-cols-[1fr_auto] items-start gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">{log.symptom_name || log.symptom_type}</div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {badge}
+                        <div className="text-xs text-gray-500 whitespace-nowrap">{new Date(log.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</div>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2 text-[11px] text-gray-600">
+                      {log.functional_impact ? <span className="truncate">Impact: {log.functional_impact}</span> : null}
+                      <button
+                        onClick={async () => {
+                          const name = prompt('Edit symptom name', String(log.symptom_name || ''));
+                          if (name === null) return;
+                          const res = await fetch(`/api/symptoms/logs/${log.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getAuthToken()}` }, body: JSON.stringify({ symptom_name: name }) });
+                          if (res.ok) {
+                            const data = await res.json();
+                            setMessages(prev => prev.map(m => m.id === message.id ? { ...m, logs: (m.logs || []).map((l: any) => l.id === log.id ? { ...l, symptom_name: data.log.symptom_name } : l) } : m));
+                          }
+                        }}
+                        className="ml-auto text-blue-600 hover:underline"
+                      >Edit</button>
+                    </div>
                   </div>
-                  <div className="mt-1 text-xs text-gray-600">
-                    {typeof log.severity_scale === 'number' ? `Severity: ${log.severity_scale}/10` : ''}
-                    {log.functional_impact ? ` • Impact: ${log.functional_impact}` : ''}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
           {message.isQuestion && message.options && (
@@ -811,7 +1096,9 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
             >
               ➤
             </button>
-            <button onClick={toggleRecording} className={`ml-2 w-10 h-10 rounded-full flex items-center justify-center text-white ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-[#2EB872] hover:bg-[#26a564]'}`} aria-label="Toggle voice recording">{isRecording ? '■' : '🎙️'}</button>
+            <button onClick={toggleRecording} className={`ml-2 w-10 h-10 rounded-full flex items-center justify-center text-white ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-[#2EB872] hover:bg-[#26a564]'}`} aria-label="Toggle voice recording" aria-pressed={isRecording}>
+              {isRecording ? <Square size={16} /> : <Mic size={16} />}
+            </button>
           </div>
           {micError && <div className="text-xs text-red-600 mt-2">{micError}</div>}
 

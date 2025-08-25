@@ -89,7 +89,7 @@ export default function AuthContainer({ onAuthSuccess }: AuthContainerProps) {
             <div className="inline-flex items-center justify-center w-20 h-20 bg-primary-100 rounded-full mb-4">
               <span className="text-3xl">🏥</span>
             </div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">Sympli Health</h1>
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">Sympli Chat</h1>
             <p className="text-xl text-gray-600">Your Personal Health Companion</p>
           </motion.div>
         </div>

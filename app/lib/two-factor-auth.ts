@@ -231,7 +231,7 @@ export class TwoFactorAuth {
 
   // Generate QR code URL for authenticator apps
   private generateQRCodeUrl(userId: string, secret: string): string {
-    const issuer = 'Sympli Health';
+    const issuer = 'Sympli';
     const account = userId;
     const algorithm = 'SHA1';
     const digits = 6;
