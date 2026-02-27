@@ -8,8 +8,6 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "pwa:build": "next build && next export",
-    "pwa:dev": "next dev",
     "clean": "rm -rf .next && rm -rf node_modules/.cache && rm -rf .vercel && echo 'Cache cleared successfully!'"
   },
   "dependencies": {

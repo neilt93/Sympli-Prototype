@@ -1,7 +1,6 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 
 export default function Home() {
   const router = useRouter()
@@ -20,7 +19,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-3">
-              <Image src="/logo.svg" alt="Sympli" width={120} height={40} priority />
+              <img src="/logo.svg" alt="Sympli" width={120} height={40} />
             </div>
 
             <nav className="hidden md:flex items-center gap-8 text-sm font-medium">

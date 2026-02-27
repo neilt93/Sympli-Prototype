@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import SymptomChat from '../components/SymptomChat';
-import Image from 'next/image';
 
 export default function ChatPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -74,7 +73,7 @@ export default function ChatPage() {
         <div className="px-4 sm:px-6 h-14 flex items-center justify-between">
           {/* Logo and Product Name */}
           <div className="flex items-center gap-3">
-            <Image src="/logo.svg" alt="Sympli" width={100} height={34} priority />
+            <img src="/logo.svg" alt="Sympli" width={100} height={34} />
           </div>
 
           {/* Navigation Actions */}
