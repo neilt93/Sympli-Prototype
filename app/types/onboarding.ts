@@ -3,6 +3,7 @@ export type UserRole = 'myself' | 'caregiver';
 export interface PersonalInformation {
   fullName: string;
   dateOfBirth: string;
+  phoneNumber?: string;
 }
 
 export interface MedicalInformation {
@@ -11,6 +12,17 @@ export interface MedicalInformation {
   chronicConditions: string[];
   currentMedications: string[];
   allergiesAndReactions: string[];
+}
+
+export interface MedicalHistory {
+  pastMedicalHistory: string;
+  surgeriesAndProcedures: string;
+  familyHistory: string;
+}
+
+export interface SymptomTracking {
+  trackingGoals: string[];
+  additionalDetails: string;
 }
 
 export interface CaregiverConsent {
@@ -34,6 +46,8 @@ export interface OnboardingData {
   personalInformation: PersonalInformation;
   userRole: UserRole;
   medicalInformation: MedicalInformation;
+  medicalHistory: MedicalHistory;
+  symptomTracking: SymptomTracking;
   caregiverConsent?: CaregiverConsent;
   requiredConsents: RequiredConsents;
   isComplete: boolean;

@@ -14,27 +14,42 @@ interface UserData {
 interface OnboardingData {
   personalInformation?: {
     fullName?: string
+    dateOfBirth?: string
     phoneNumber?: string
   }
   userRole?: 'myself' | 'caregiver'
   medicalInformation?: {
     age?: number
-    sex?: string
+    sexAssignedAtBirth?: string
     chronicConditions?: string[]
-    medications?: string[]
-    allergies?: string[]
+    currentMedications?: string[]
+    allergiesAndReactions?: string[]
+  }
+  medicalHistory?: {
+    pastMedicalHistory?: string
+    surgeriesAndProcedures?: string
+    familyHistory?: string
+  }
+  symptomTracking?: {
+    trackingGoals?: string[]
+    additionalDetails?: string
   }
   caregiverConsent?: {
-    patientName?: string
+    patientFullName?: string
     patientAge?: number
     patientSex?: string
-    consentMethod?: 'verbal' | 'written' | 'digital'
+    relationship?: string
+    consentMethod?: 'voice' | 'text'
+    hasConsent?: boolean
+    additionalNotes?: string
+    takesResponsibility?: boolean
+    patientAwareOfDataSharing?: boolean
   }
   requiredConsents?: {
     understandsNotDiagnostic?: boolean
     consentsToStorage?: boolean
     consentsToSummaryGeneration?: boolean
-    consentsToResearch?: boolean
+    allowsResearchParticipation?: boolean
   }
 }
 
@@ -229,7 +244,7 @@ export default function SettingsPage() {
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/symptoms')}
               className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-colors"
             >
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -369,12 +384,12 @@ export default function SettingsPage() {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Sex</label>
                         <select
-                          value={editData?.medicalInformation?.sex || ''}
+                          value={editData?.medicalInformation?.sexAssignedAtBirth || ''}
                           onChange={(e) => setEditData(prev => ({
                             ...prev,
                             medicalInformation: {
                               ...prev?.medicalInformation,
-                              sex: e.target.value
+                              sexAssignedAtBirth: e.target.value
                             }
                           }))}
                           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -405,12 +420,12 @@ export default function SettingsPage() {
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Medications</label>
                         <textarea
-                          value={editData?.medicalInformation?.medications?.join(', ') || ''}
+                          value={editData?.medicalInformation?.currentMedications?.join(', ') || ''}
                           onChange={(e) => setEditData(prev => ({
                             ...prev,
                             medicalInformation: {
                               ...prev?.medicalInformation,
-                              medications: e.target.value.split(',').map(s => s.trim()).filter(s => s)
+                              currentMedications: e.target.value.split(',').map(s => s.trim()).filter(s => s)
                             }
                           }))}
                           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -421,12 +436,12 @@ export default function SettingsPage() {
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Allergies</label>
                         <textarea
-                          value={editData?.medicalInformation?.allergies?.join(', ') || ''}
+                          value={editData?.medicalInformation?.allergiesAndReactions?.join(', ') || ''}
                           onChange={(e) => setEditData(prev => ({
                             ...prev,
                             medicalInformation: {
                               ...prev?.medicalInformation,
-                              allergies: e.target.value.split(',').map(s => s.trim()).filter(s => s)
+                              allergiesAndReactions: e.target.value.split(',').map(s => s.trim()).filter(s => s)
                             }
                           }))}
                           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -447,12 +462,12 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium text-gray-700 mb-1">Patient Name</label>
                         <input
                           type="text"
-                          value={editData?.caregiverConsent?.patientName || ''}
+                          value={editData?.caregiverConsent?.patientFullName || ''}
                           onChange={(e) => setEditData(prev => ({
                             ...prev,
                             caregiverConsent: {
                               ...prev?.caregiverConsent,
-                              patientName: e.target.value
+                              patientFullName: e.target.value
                             }
                           }))}
                           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -503,15 +518,14 @@ export default function SettingsPage() {
                             ...prev,
                             caregiverConsent: {
                               ...prev?.caregiverConsent,
-                              consentMethod: e.target.value as 'verbal' | 'written' | 'digital'
+                              consentMethod: e.target.value as 'voice' | 'text'
                             }
                           }))}
                           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         >
                           <option value="">Select consent method</option>
-                          <option value="verbal">Verbal</option>
-                          <option value="written">Written</option>
-                          <option value="digital">Digital</option>
+                          <option value="voice">Voice</option>
+                          <option value="text">Text</option>
                         </select>
                       </div>
                     </div>
@@ -543,8 +557,8 @@ export default function SettingsPage() {
                     <p className="text-gray-900">{onboardingData?.personalInformation?.fullName || 'Not set'}</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                    <p className="text-gray-900">{onboardingData?.personalInformation?.phoneNumber || 'Not set'}</p>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+                    <p className="text-gray-900">{onboardingData?.personalInformation?.dateOfBirth || 'Not set'}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">User Role</label>
@@ -556,10 +570,10 @@ export default function SettingsPage() {
                       <p className="text-gray-900">{onboardingData.medicalInformation.age}</p>
                     </div>
                   )}
-                  {onboardingData?.medicalInformation?.sex && (
+                  {onboardingData?.medicalInformation?.sexAssignedAtBirth && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Sex</label>
-                      <p className="text-gray-900 capitalize">{onboardingData.medicalInformation.sex}</p>
+                      <p className="text-gray-900 capitalize">{onboardingData.medicalInformation.sexAssignedAtBirth}</p>
                     </div>
                   )}
                   {onboardingData?.medicalInformation?.chronicConditions && onboardingData.medicalInformation.chronicConditions.length > 0 && (
@@ -568,16 +582,16 @@ export default function SettingsPage() {
                       <p className="text-gray-900">{onboardingData.medicalInformation.chronicConditions.join(', ')}</p>
                     </div>
                   )}
-                  {onboardingData?.medicalInformation?.medications && onboardingData.medicalInformation.medications.length > 0 && (
+                  {onboardingData?.medicalInformation?.currentMedications && onboardingData.medicalInformation.currentMedications.length > 0 && (
                     <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Medications</label>
-                      <p className="text-gray-900">{onboardingData.medicalInformation.medications.join(', ')}</p>
+                      <p className="text-gray-900">{onboardingData.medicalInformation.currentMedications.join(', ')}</p>
                     </div>
                   )}
-                  {onboardingData?.medicalInformation?.allergies && onboardingData.medicalInformation.allergies.length > 0 && (
+                  {onboardingData?.medicalInformation?.allergiesAndReactions && onboardingData.medicalInformation.allergiesAndReactions.length > 0 && (
                     <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Allergies</label>
-                      <p className="text-gray-900">{onboardingData.medicalInformation.allergies.join(', ')}</p>
+                      <p className="text-gray-900">{onboardingData.medicalInformation.allergiesAndReactions.join(', ')}</p>
                     </div>
                   )}
                 </div>
@@ -588,7 +602,7 @@ export default function SettingsPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Patient Name</label>
-                        <p className="text-gray-900">{onboardingData.caregiverConsent.patientName || 'Not provided'}</p>
+                        <p className="text-gray-900">{onboardingData.caregiverConsent.patientFullName || 'Not provided'}</p>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Patient Age</label>

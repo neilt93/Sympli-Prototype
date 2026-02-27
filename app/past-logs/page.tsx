@@ -17,6 +17,8 @@ export default function PastLogsPage() {
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [confirmAllOpen, setConfirmAllOpen] = useState(false);
+  const [confirmOneId, setConfirmOneId] = useState<string | null>(null);
 
   async function getAuthToken(): Promise<string | undefined> {
     try {
@@ -49,7 +51,6 @@ export default function PastLogsPage() {
   };
 
   const deleteAll = async () => {
-    if (!confirm('Delete all logs? This cannot be undone.')) return;
     try {
       const token = await getAuthToken();
       const ids = logs.map(l => l.id);
@@ -73,10 +74,13 @@ export default function PastLogsPage() {
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Past logs</h1>
+        <div className="flex items-center gap-2">
+          <button onClick={() => router.back()} className="px-3 py-2 border rounded">Back</button>
+          <h1 className="text-2xl font-bold">Past logs</h1>
+        </div>
         <div className="flex items-center gap-2">
           <button onClick={fetchLogs} className="px-3 py-2 border rounded">Refresh</button>
-          <button onClick={deleteAll} className="px-3 py-2 border rounded text-red-600">Delete all</button>
+          <button onClick={() => setConfirmAllOpen(true)} className="px-3 py-2 border rounded text-red-600">Delete all</button>
         </div>
       </div>
       {loading && <div>Loading…</div>}
@@ -89,12 +93,38 @@ export default function PastLogsPage() {
                 <div className="font-medium truncate">{log.symptom_name || log.symptom_type}</div>
                 <div className="text-sm text-gray-600">{new Date(log.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
               </div>
-              <div className="text-sm text-gray-600">{typeof log.severity_scale === 'number' ? `Sev ${log.severity_scale}/10` : 'Sev —'}</div>
+              <div className="text-sm text-gray-600">{typeof log.severity_scale === 'number' ? `Sev ${log.severity_scale}/10` : 'Sev N/A'}</div>
               <button onClick={() => editOne(log)} className="ml-2 px-3 py-1 border rounded">Edit</button>
-              <button onClick={async () => { if (!confirm('Delete this log?')) return; const token = await getAuthToken(); await fetch(`/api/symptoms/logs/${log.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token || ''}` } }); await fetchLogs(); }} className="ml-2 px-3 py-1 border rounded text-red-600">Delete</button>
+              <button onClick={() => setConfirmOneId(log.id)} className="ml-2 px-3 py-1 border rounded text-red-600">Delete</button>
             </div>
           ))}
           {logs.length === 0 && <div className="text-sm text-gray-600">No logs yet.</div>}
+        </div>
+      )}
+      {/* Confirm delete all */}
+      {confirmAllOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-semibold mb-2">Delete all logs?</h3>
+            <p className="text-sm text-gray-600 mb-4">This cannot be undone.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmAllOpen(false)} className="px-3 py-2 border rounded">Cancel</button>
+              <button onClick={async () => { await deleteAll(); setConfirmAllOpen(false); }} className="px-3 py-2 bg-red-600 text-white rounded">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Confirm delete one */}
+      {confirmOneId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-semibold mb-2">Delete this log?</h3>
+            <p className="text-sm text-gray-600 mb-4">This cannot be undone.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmOneId(null)} className="px-3 py-2 border rounded">Cancel</button>
+              <button onClick={async () => { const token = await getAuthToken(); await fetch(`/api/symptoms/logs/${confirmOneId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token || ''}` } }); setConfirmOneId(null); await fetchLogs(); }} className="px-3 py-2 bg-red-600 text-white rounded">Delete</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

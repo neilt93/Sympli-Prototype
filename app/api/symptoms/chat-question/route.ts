@@ -15,6 +15,9 @@ interface SymptomData {
   symptomType: 'headache' | 'fatigue' | 'side_effect' | 'pregnancy' | 'other';
   isNew: 'new' | 'ongoing';
   description: string;
+  userDescription: string; // New field for user's own words description
+  rawTranscript: string; // Raw patient response with proper grammar
+  processedTranscript: string; // Processed transcript for clinical use
   llmResponses: string[];
   functionalImpact: string;
   emotionalImpact: string;
@@ -64,6 +67,12 @@ export async function POST(request: NextRequest) {
       }
     } catch {}
 
+    // Ongoing flow guardrails handled by LLM prompt; no deterministic questions here
+    const idxNum = typeof currentQuestionIndex === 'number' ? currentQuestionIndex : 0;
+    const followupsAsked = Math.max(0, idxNum - 2);
+    const effectiveIsOngoing = String(currentSymptomData?.isNew || '') === 'ongoing';
+    const progressionAsked = effectiveIsOngoing ? await llmProgressionAsked(previousMessages || []) : false;
+
     // Generate adaptive questions based on the current context
     let questionData = await generateAdaptiveQuestion(
       currentSymptomData,
@@ -97,6 +106,24 @@ export async function POST(request: NextRequest) {
         } catch {}
       }
     }
+
+    // LLM judge to prevent duplicates or repeating progression when already covered
+    try {
+      const verdict = await llmJudgeCandidate(previousMessages || [], String(questionData?.question || ''));
+      if (verdict?.duplicate || (verdict?.category === 'progression' && progressionAsked)) {
+        // Re-ask the LLM for a different question instead of using a deterministic fallback
+        try {
+          const retry = await generateAdaptiveQuestion(
+            currentSymptomData,
+            user.id,
+            previousMessages || [],
+            collectedResponses || {},
+            typeof currentQuestionIndex === 'number' ? currentQuestionIndex : 0
+          );
+          if (retry?.question) questionData = retry;
+        } catch {}
+      }
+    } catch {}
 
     return NextResponse.json(questionData);
 
@@ -161,11 +188,11 @@ async function generateAdaptiveQuestion(
   const initialIsOngoing = symptomData.isNew === 'ongoing';
   // Guidance by symptom type (used to adapt flow without special-casing a single type)
   const typeGuidanceMap: Record<SymptomData['symptomType'], string> = {
-    headache: 'Use SOCRATES: Site, Onset, Character, Radiation, Associated symptoms, Timing/pattern, Triggers/relievers, Severity. Consider red flags (thunderclap onset, fever, neck stiffness, neuro deficits, head injury). Include functional/emotional impact as relevant.',
-    fatigue: 'Clarify duration, diurnal variation, sleep quality, mood, associated symptoms (weight change, appetite change, fever, shortness of breath), activity tolerance, lifestyle and stressors, medications. Ask about red flags (chest pain, breathlessness at rest, syncope).',
-    side_effect: 'First clarify what the side effect is and what it relates to (medicine, vaccine, treatment, product, food, activity) or if unsure. Do not assume medication unless already mentioned. Once source is clear, ask about timing in relation to exposure, severity and impact, what helps/worsens, other exposures/meds/supplements, and prior reactions.',
-    pregnancy: 'Do NOT assume the user is pregnant unless they have explicitly said so. If the user names a specific concern (e.g., stomach pain), TREAT THAT as the presenting symptom: use the exact term ("stomach pain") and ask a focused clinical follow‑up (onset, severity, location, pattern, triggers/relievers). Do NOT refer generically to a "pregnancy symptom", and do NOT ask about relationships like "did it start at the same time as the pregnancy symptom". If pregnancy is established, you may ask (once) for gestational timing if not already known. Always screen sensitively for red flags relevant to the stated symptom (e.g., bleeding, severe pain, headaches/vision changes, reduced fetal movements).',
-    other: 'First clarify the exact symptom in the user’s own words. Then use general clinical structure: site/location (if applicable), onset/timing, character, associated symptoms, pattern, triggers/relievers, severity, functional/emotional impact, salient red flags.'
+    headache: 'Use SOCRATES framework: Site (exact location), Onset (sudden/gradual), Character (throbbing/stabbing/dull), Radiation (spreads where), Associated symptoms (nausea, photophobia, neck stiffness), Timing/pattern (episodic/constant, duration), Triggers/relievers (what makes it better/worse), Severity (0-10). RED FLAGS: thunderclap onset, fever with neck stiffness, neurological deficits, head injury, vision changes, confusion. Ask about sleep patterns, stress, medications, and functional impact.',
+    fatigue: 'CLINICAL APPROACH: Duration (acute <2 weeks vs chronic), Pattern (morning vs evening, constant vs episodic), Sleep quality (insomnia, sleep apnea, restless legs), Associated symptoms (weight loss/gain, appetite changes, fever, night sweats, shortness of breath, chest pain, palpitations, muscle weakness, joint pain, mood changes), Activity tolerance (can they climb stairs, walk distances), Lifestyle factors (stress, work changes, exercise), Medications/supplements, Recent illnesses. RED FLAGS: chest pain, breathlessness at rest, syncope, unexplained weight loss, fever, night sweats.',
+    side_effect: 'CLINICAL APPROACH: First identify the exposure (medication, vaccine, food, environmental, activity). Timing relative to exposure (minutes, hours, days). Severity and progression. What helps/worsens it. Other concurrent exposures. Prior similar reactions. Current medications/supplements. Functional impact. Consider drug interactions, allergies, and contraindications.',
+    pregnancy: 'CLINICAL APPROACH: Focus on the specific symptom, not pregnancy itself. For each symptom, ask: onset, severity, location, pattern, triggers/relievers, associated symptoms. Screen for red flags: bleeding, severe pain, headaches with vision changes, reduced fetal movements, fever, severe nausea/vomiting. Ask about gestational age if relevant. Consider pregnancy-specific conditions (pre-eclampsia, gestational diabetes, etc.).',
+    other: 'CLINICAL APPROACH: Clarify the exact symptom first. Then systematically explore: site/location, onset/timing, character/quality, associated symptoms, pattern/frequency, triggers/relievers, severity, functional/emotional impact. Consider differential diagnosis and red flags relevant to the specific symptom.'
   };
   const typeGuidance = typeGuidanceMap[symptomData.symptomType] || typeGuidanceMap.other;
   const askedSoFar = collectedResponses?.follow_ups ? Object.keys(collectedResponses.follow_ups) : [];
@@ -176,8 +203,17 @@ async function generateAdaptiveQuestion(
   const followupsAsked = Math.max(0, (currentQuestionIndex || 0) - 2);
   const totalFollowupsMax = 10;
   const minFollowupsRequired = 6;
+  const hasFunctionalImpact = Boolean(String((symptomData as any)?.functionalImpact || '').trim());
+  const hasEmotionalImpact = Boolean(String((symptomData as any)?.emotionalImpact || '').trim());
+  const hasSeverity = (() => {
+    try {
+      const sev = String((symptomData as any)?.socratesData?.severity || '').trim();
+      return /\b(10|[0-9])\b/.test(sev);
+    } catch { return false; }
+  })();
+  // FI/EI enforcement via LLM prompt only. Do not inject deterministic questions
   if (questionNumber > totalMaxQuestions) {
-    return { question: 'Thank you — I have enough information for now.', inputType: 'text', isComplete: true };
+    return { question: 'Thank you, I have enough information for now.', inputType: 'text', isComplete: true };
   }
 
   // Build structured context parts early so they are available throughout
@@ -226,7 +262,7 @@ async function generateAdaptiveQuestion(
         }
       } else {
         // No prior logs for this type; treat like NEW for flow guidance
-        contextHeaderParts.push('Note: No previous logs found for this symptom type — treat as NEW for now.');
+        contextHeaderParts.push('Note: No previous logs found for this symptom type, treat as NEW for now.');
         (symptomData as any).isNew = 'new';
         (symptomData as any).progress = '';
       }
@@ -242,52 +278,57 @@ STRICT OUTPUT RULES:
 - Output ONLY one single line that is a question and ends with a question mark.
 - Do not include any statements, summaries, answers, or extra text.
 - Do not repeat any question already asked in the conversation.`
-    : `You are a medical assistant. Ask exactly ONE follow‑up question to progress the clinical history.
+    : `You are a UK GP conducting a clinical history. Ask exactly ONE intelligent follow-up question that a doctor would ask.
 
-For NEW symptoms (Status: NEW):
-- Prioritise clarifying questions appropriate to the symptom type.
-- Symptom-type guidance: ${typeGuidance}
+CLINICAL APPROACH:
+- Think like a doctor: What's the most important missing piece of information for diagnosis/management?
+- Build on previous answers: Reference what they've already told you and ask for the next logical detail.
+- Consider differential diagnosis: What would help rule in/out common causes?
+- Prioritise red flags: Ask about concerning symptoms that could indicate serious conditions.
+- Be specific and clinical: Avoid generic questions like "tell me more" or "could you elaborate".
 
-For ONGOING symptoms (Status: ONGOING):
-- If and only if a relevant previous entry is provided (see the line starting with "Relevant previous:"), you may reference it once (include the date) and ask what has changed since then.
-- If no relevant previous entry is provided, do NOT mention prior logs. Ask about progress (better/worse/same), new symptoms, treatment response, new triggers/patterns, and impact WITHOUT referring to a "last" or "previous" log.
- - Only reference a prior entry if it is clinically relevant to the CURRENT complaint (keyword overlap). If a relevant previous entry is provided, include its date and a short clause, then ask what has changed since then.
+SYMPTOM-SPECIFIC GUIDANCE:
+${typeGuidance}
 
-TONE AND STYLE:
-- Use professional, concise UK clinical phrasing.
-- Use UK English spelling and terminology (e.g., oedema, diarrhoea).
-- Avoid tag questions (e.g., "..., isn't it?").
-- Avoid emotive/colloquial fillers and any leading or assumptive wording.
-- Ask a single, neutral, precise question.
- - Use the user’s exact term for the presenting symptom (e.g., "stomach pain"). Do NOT say "pregnancy symptom" or invent relationships between symptoms unless the user stated them.
+CONVERSATION AWARENESS:
+- Review the entire conversation history and DO NOT repeat any question already asked.
+- Build on their previous answers: "You mentioned [specific detail], has [related question]?"
+- Ask the single most clinically relevant next question based on what they've told you so far.
+- Avoid asking about information they've already provided.
 
-SPECIFICITY (conversation-aware):
-- Avoid vague prompts like "Could you share a bit more detail?".
-- Tie the question to what the patient just said or their presenting complaint.
-- It’s fine to refer to what they said in plain language (e.g., "You mentioned throat swelling after penicillin — did it start within an hour?").
-- Ask for the single most relevant missing detail now.
- - Do NOT use generic fillers like "tell me more", "could you elaborate", or "more detail".
- - Do NOT relate the timing to other unspecified symptoms (e.g., "same time as the pregnancy symptom"). Focus on the one symptom under discussion unless the user mentioned multiple.
+FOR ONGOING SYMPTOMS (Status: ONGOING):
+- If a relevant previous entry is provided, reference it: "Last time you logged this on [date], you described [specific detail]. Has this changed?"
+- Focus on progression, new symptoms, treatment response, and changes in severity/pattern.
+- Ask context-aware questions that reference specific details from previous entries.
 
-QUESTION CADENCE:
-- The overall flow should ask between 6 and 10 follow-up questions in total.
-- This is follow-up number ${followupsAsked + 1} of at most ${totalFollowupsMax}. Ask the most clinically useful next question now.
+CLINICAL PRIORITIES:
+- Red flags and concerning symptoms
+- Severity and functional impact
+- Pattern and timing
+- Associated symptoms
+- Triggers and relieving factors
+- Treatment response (for ongoing symptoms)
 
-CRITICAL:
-- Review the entire conversation history and DO NOT repeat any question that has already been asked.
-- Ask something new that has not been covered yet.
-- Do NOT ask meta-questions about logging other symptoms/concerns, next steps, or ending the session. Only ask clinically relevant follow-ups for this symptom.
+TONE:
+- Professional, concise UK clinical phrasing
+- UK English spelling (oedema, diarrhoea)
+- Direct, specific questions
+- No leading questions or assumptions
 
 STRICT OUTPUT RULES:
 - Output ONLY one single line that ends with a question mark.
-- Do not include any preface or acknowledgement.
-- Do not include any other statements, summaries, or extra text.
+- Do not include any preface, acknowledgement, or extra text.
 - Do not echo the user's words.`;
 
   // Build structured context + full conversation
   contextHeaderParts.push(`Symptom type: ${symptomData.symptomType}`);
   contextHeaderParts.push(`Status: ${effectiveIsOngoing ? 'ONGOING' : 'NEW'}`);
-  if (symptomText) contextHeaderParts.push(`Presenting complaint: "${symptomText}"`);
+  if (symptomData.processedTranscript) {
+    contextHeaderParts.push(`Presenting complaint (processed): "${symptomData.processedTranscript}"`);
+  } else if (symptomData.userDescription) {
+    contextHeaderParts.push(`User's own words: "${symptomData.userDescription}"`);
+  }
+  if (symptomText) contextHeaderParts.push(`Symptom category: "${symptomText}"`);
   if (effectiveIsOngoing && previousSimilarSummary) {
     contextHeaderParts.push(`Previous similar logs (summary):\n${previousSimilarSummary}`);
   }
@@ -348,19 +389,33 @@ STRICT OUTPUT RULES:
   
   const content = data?.choices?.[0]?.message?.content as string | undefined;
   if (!content) {
-    // fallback: if we have already asked enough, finish; else ask a safe next question
-    if (followupsAsked >= minFollowupsRequired) {
-      return { question: 'Thank you — I have enough information for now.', inputType: 'text', isComplete: true };
-    }
-    const safeQ = effectiveIsOngoing ? 'What has changed since it started — better, worse, or the same?' : 'Where exactly is the pain located?';
-    return { question: safeQ, inputType: 'text', isComplete: false };
+    // No deterministic fallback; ask the LLM again
+    const retry = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...conversation
+        ],
+        temperature: 0.7,
+        max_tokens: 150
+      })
+    });
+    const retryData = await retry.json();
+    const retryContent = retryData?.choices?.[0]?.message?.content as string | undefined;
+    if (!retryContent) throw new Error('LLM returned empty content');
+    const retryQuestion = retryContent.trim().split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean).reverse().find((l: string) => /\?$/.test(l));
+    if (!retryQuestion) throw new Error('LLM returned content without a question');
+    return { question: retryQuestion, inputType: 'text', isComplete: false };
   }
   const parsedContent = content.trim();
 
   // If model signalled completion, respect it when we have asked enough
   const lower = parsedContent.toLowerCase();
   if ((lower.includes('enough information') || lower.startsWith('thank you')) && followupsAsked >= minFollowupsRequired) {
-    return { question: 'Thank you — I have enough information for now.', inputType: 'text', isComplete: true };
+    return { question: 'Thank you, I have enough information for now.', inputType: 'text', isComplete: true };
   }
 
   const lines = parsedContent.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -368,25 +423,143 @@ STRICT OUTPUT RULES:
   let first = questionLine;
   if (!first) {
     // Retry with a safe deterministic next question
-    first = effectiveIsOngoing ? 'What has changed since it started — better, worse, or the same?' : 'Where exactly is the pain located?';
+    if (effectiveIsOngoing) {
+      const st = String((symptomData as any)?.symptomType || '').toLowerCase();
+      first = st === 'pregnancy'
+        ? 'What specific symptom or concern are we logging today related to your pregnancy?'
+        : 'What has changed since it started, better, worse, or the same?';
+    } else {
+      first = 'Where exactly is the pain located?';
+    }
   }
 
-  const nextQuestion = first;
+  let nextQuestion = first;
+  // Hard de-dupe: if progression has already been asked anytime, avoid asking it again
+  const normalized = normalizeQuestion(String(nextQuestion || ''));
+  const isProgressionText = /what has changed|better worse|better worse same|progressed|progression|same$/.test(normalized);
+  let hasAskedProgressionEver = false;
+  try {
+    hasAskedProgressionEver = await llmProgressionAsked(previousMessages || []);
+  } catch {}
+  if (hasAskedProgressionEver && isProgressionText) {
+    nextQuestion = 'Have there been any new triggers or patterns since it started?';
+  }
+  // Symptom-type safety: avoid irrelevant pain-location prompts for non-pain symptoms
+  try {
+    const st = String((symptomData as any)?.symptomType || '').toLowerCase();
+    const nq = normalizeQuestion(String(nextQuestion || ''));
+    const asksPainLoc = /(where.*(pain|located)|which part|site|where exactly)/.test(nq) || /\bpain\b/.test(nq);
+    if (st === 'fatigue' && asksPainLoc) {
+      nextQuestion = 'How long has the fatigue been present, and is it constant or does it vary during the day?';
+    }
+    if (st === 'side_effect' && asksPainLoc) {
+      nextQuestion = 'What is the side effect related to, and when did it start relative to the exposure?';
+    }
+    if (st === 'pregnancy' && asksPainLoc) {
+      nextQuestion = 'What is the specific symptom you are experiencing, and when did it start?';
+    }
+    // Pregnancy guard: never treat pregnancy itself as the symptom
+    if (st === 'pregnancy') {
+      const q = String(nextQuestion || '').toLowerCase();
+      const genericPregnancy = /(pregnancy|pregnant)/.test(q);
+      const hasSpecificSymptomWord = /(symptom|concern|pain|bleeding|nausea|vomit|vomiting|swelling|headache|contraction|movements?|fever|cough|rash)/.test(q);
+      if (genericPregnancy && !hasSpecificSymptomWord) {
+        nextQuestion = 'What specific symptom or concern are we logging today related to your pregnancy?';
+      }
+    }
+  } catch {}
 
   // Completion logic: require at least 6 follow-ups; cap at 10 follow-ups
   const reachedMaxFollowups = followupsAsked >= totalFollowupsMax;
   if (!nextQuestion) {
-    if (followupsAsked >= minFollowupsRequired) {
-      return { question: 'Thank you — I have enough information for now.', inputType: 'text', isComplete: true };
-    }
     throw new Error('LLM did not return a question');
   }
+  // Last-line de-dupe: if this exact question was already asked, select a safe alternative
+  const seen = extractAskedQuestions(previousMessages || []);
+  if (seen.has(normalizeQuestion(String(nextQuestion)))) {
+    const st = String((symptomData as any)?.symptomType || '').toLowerCase();
+    const alternates: Record<string, string[]> = {
+      default: [
+        'Have there been any new triggers or patterns since it started?',
+        'On a scale of 0–10, how severe is it at its worst?'
+      ],
+      fatigue: [
+        'How is your sleep, and do you wake feeling rested?',
+        'Has this affected your ability to work, study, or exercise?'
+      ],
+      headache: [
+        'When did it start, and how long do episodes last?',
+        'Is anything making it better or worse?'
+      ],
+      side_effect: [
+        'Has it improved, worsened, or stayed the same since it began?',
+        'Have you tried anything that helped or made it worse?'
+      ],
+      pregnancy: [
+        'Has anything made it better or worse?',
+        'Are there any associated symptoms you have noticed?'
+      ],
+      other: [
+        'Where is it located, if anywhere?',
+        'Is anything making it better or worse?'
+      ]
+    };
+    const cands = (alternates[st] || []).concat(alternates.default || []);
+    const replacement = cands.find(q => !seen.has(normalizeQuestion(q)));
+    if (replacement) nextQuestion = replacement;
+  }
   if (reachedMaxFollowups) {
-    return { question: 'Thank you — I have enough information for now.', inputType: 'text', isComplete: true };
+    return { question: 'Thank you, I have enough information for now.', inputType: 'text', isComplete: true };
   }
   // Attachments stage handled by agent above; no hardcoded prompt.
   // Carry forward collectedResponses as-is; client will send back on next turn { question: -> answer }
   return { question: nextQuestion, inputType: 'text', isComplete: false };
+}
+
+async function llmProgressionAsked(previousMessages: Array<{ type?: string; role?: string; content: string }>): Promise<boolean> {
+  try {
+    if (!openaiApiKey) return false;
+    const convo = (previousMessages || []).map((m: any) => ({ role: m.type === 'user' || m.role === 'user' ? 'user' : 'assistant', content: String(m.content || '') })).slice(-20);
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0,
+        max_tokens: 10,
+        messages: [
+          { role: 'system', content: 'Answer only YES or NO. Has the assistant already asked a progression question (better/worse/same or what has changed) about the symptom at any point in this conversation? Reply exactly YES or NO.' },
+          ...convo
+        ]
+      })
+    });
+    const data = await res.json();
+    const a = String(data?.choices?.[0]?.message?.content || '').trim().toUpperCase();
+    return a.startsWith('Y');
+  } catch { return false; }
+}
+
+async function llmJudgeCandidate(previousMessages: Array<{ type?: string; role?: string; content: string }>, candidate: string): Promise<{ duplicate: boolean; category?: string } | null> {
+  try {
+    if (!openaiApiKey) return null;
+    const convo = (previousMessages || []).map((m: any) => ({ role: m.type === 'user' || m.role === 'user' ? 'user' : 'assistant', content: String(m.content || '') })).slice(-20);
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0,
+        max_tokens: 60,
+        messages: [
+          { role: 'system', content: 'You are a UK GP intake assistant. Given a short chat history and a candidate follow-up, return strict JSON: {"duplicate":true|false, "category":"progression|impact|severity|pattern|treatment|other"}. Consider duplicates by meaning, not exact wording.' },
+          { role: 'user', content: `History:\n${convo.map(m=>m.role.toUpperCase()+': '+m.content).join('\n')}` },
+          { role: 'user', content: `Candidate: ${candidate}` }
+        ]
+      })
+    });
+    const data = await res.json();
+    try { return JSON.parse(String(data?.choices?.[0]?.message?.content || '').trim()); } catch { return null; }
+  } catch { return null; }
 }
 
 async function getPreviousSimilarSymptoms(userId: string, symptomType: string) {

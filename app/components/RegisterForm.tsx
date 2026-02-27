@@ -13,7 +13,6 @@ interface RegisterFormProps {
 export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: RegisterFormProps) {
   const router = useRouter()
   const [formData, setFormData] = useState({
-    fullName: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -97,7 +96,6 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: Reg
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          fullName: formData.fullName,
           email: formData.email,
           password: formData.password
         }),
@@ -144,7 +142,7 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: Reg
       {/* Header */}
       <div className="bg-green-500 rounded-t-2xl p-6 text-white text-center mb-6">
         <div className="flex items-center justify-center mb-4">
-          <img src="/logo.svg" alt="Sympli" className="h-12" />
+          <div className="text-2xl font-extrabold tracking-wide">Sympli</div>
         </div>
         <p className="text-sm text-green-100 flex items-center justify-center gap-1">
           <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -182,21 +180,7 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: Reg
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-2">
-            Full Name
-          </label>
-          <input
-            type="text"
-            id="fullName"
-            name="fullName"
-            value={formData.fullName}
-            onChange={handleInputChange}
-            required
-            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
-            placeholder="Enter your full name"
-          />
-        </div>
+        {/* Removed full name: email-only sign up */}
 
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">

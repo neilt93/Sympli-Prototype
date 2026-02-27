@@ -1,5 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import fs from 'fs';
+import path from 'path';
 
 export interface PDFTableData {
   headers: string[];
@@ -29,6 +31,8 @@ export class PDFGenerator {
   private doc: jsPDF;
   private headerDrawnPages: Set<number>;
   private footerDrawnPages: Set<number>;
+  private static logoPngDataUri: string | null = null;
+  private static logoSvgDataUri: string | null = null;
 
   constructor() {
     this.doc = new jsPDF();
@@ -158,10 +162,11 @@ export class PDFGenerator {
 
     // First page: full cover block; subsequent pages: minimal header
     if (currentPage === 1) {
-      // Title
+      // Title + Logo
       this.doc.setFontSize(18);
       this.doc.setFont('helvetica', 'bold');
       this.doc.setTextColor(44, 62, 80);
+      // Remove logo for now; show plain title
       this.doc.text(content.title || 'Medical Appointment Report by Sympli', 20, 25);
 
       // Patient info

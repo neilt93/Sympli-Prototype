@@ -19,13 +19,16 @@ export async function POST(request: NextRequest) {
 
     console.log('📧 Registration data received:', { email, fullName, hasPassword: !!password });
 
-    if (!fullName || !email || !password) {
-      console.error('❌ Missing required fields:', { fullName: !!fullName, email: !!email, password: !!password });
+    if (!email || !password) {
+      console.error('❌ Missing required fields:', { email: !!email, password: !!password });
       return NextResponse.json(
-        { error: 'Full name, email, and password are required' },
+        { error: 'Email and password are required' },
         { status: 400 }
       );
     }
+
+    // Use email as fullName if not provided (email-only signup)
+    const displayName = fullName || email.split('@')[0];
 
     const normalizedEmail = email.toLowerCase().trim();
 
@@ -57,13 +60,20 @@ export async function POST(request: NextRequest) {
     // Create user with Supabase Auth (requires email verification)
     console.log('🆕 Creating new user with Supabase Auth...');
     
+    // Get the base URL for redirects - use request headers to get the current domain
+    const host = request.headers.get('host') || 'localhost:3000';
+    const protocol = request.headers.get('x-forwarded-proto') || 'http';
+    const baseUrl = `${protocol}://${host}`;
+    const redirectUrl = `${baseUrl}/auth/callback`;
+
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: normalizedEmail,
       password: password,
       options: {
         data: {
-          full_name: fullName
-        }
+          full_name: displayName
+        },
+        emailRedirectTo: redirectUrl
       }
     });
 
@@ -93,7 +103,7 @@ export async function POST(request: NextRequest) {
       .upsert({
         id: authData.user.id,
         email: normalizedEmail,
-        full_name: fullName,
+        full_name: displayName,
         created_at: new Date().toISOString(),
         is_active: true,
         profile: JSON.stringify({
@@ -115,7 +125,7 @@ export async function POST(request: NextRequest) {
     const userData = {
       id: authData.user.id,
       email: authData.user.email,
-      full_name: fullName,
+      full_name: displayName,
       onboarding_complete: false,
       is_active: true,
       email_confirmed: false

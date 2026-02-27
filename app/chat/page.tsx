@@ -72,24 +72,10 @@ export default function ChatPage() {
       <div className="bg-gradient-to-r from-green-600 via-green-700 to-green-800 shadow-lg">
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="flex justify-between items-center">
-            {/* Logo and Title */}
+            {/* Brand and Title */}
             <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
-                {/* Custom Sympli Logo - Medical Cross with Human Figure */}
-                <svg className="w-8 h-8" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  {/* Main Cross Shape */}
-                  <rect x="8" y="4" width="4" height="24" rx="2" fill="#22C55E"/>
-                  <rect x="4" y="12" width="24" height="4" rx="2" fill="#22C55E"/>
-                  
-                  {/* Human Figure Head */}
-                  <circle cx="16" cy="10" r="2" fill="#15803D"/>
-                  
-                  {/* Human Figure Body (curved shape in lower right) */}
-                  <path d="M18 16 Q20 18 18 20 Q16 22 14 20 Q12 18 14 16 Q16 14 18 16" fill="#15803D"/>
-                </svg>
-              </div>
+              <div className="text-white text-2xl font-extrabold tracking-wide">Sympli</div>
               <div>
-                <h1 className="text-3xl font-bold text-white">Sympli</h1>
                 <p className="text-green-100 text-lg">Voice-first health companion</p>
               </div>
             </div>

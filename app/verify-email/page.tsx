@@ -18,6 +18,9 @@ function VerifyEmailContent() {
   useEffect(() => {
     if (token && type === 'signup') {
       verifyEmail(token);
+    } else if (!token && !type) {
+      // If no token, show the pending state
+      setVerificationStatus('pending');
     }
   }, [token, type]);
 
@@ -93,7 +96,7 @@ function VerifyEmailContent() {
           {/* Header */}
           <div className="bg-green-500 rounded-t-2xl p-6 text-white text-center mb-6">
             <div className="flex items-center justify-center mb-4">
-              <img src="/logo.svg" alt="Sympli" className="h-12" />
+              <div className="text-2xl font-extrabold tracking-wide">Sympli</div>
             </div>
             <h2 className="text-2xl font-bold">Email Verification</h2>
           </div>
@@ -148,6 +151,9 @@ function VerifyEmailContent() {
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Check Your Email</h3>
                 <p className="text-gray-600 mb-4">
                   We've sent a verification link to your email address. Please click the link to verify your account.
+                </p>
+                <p className="text-sm text-blue-600 mb-4">
+                  💡 The verification link will automatically redirect you back to the app once confirmed.
                 </p>
                 <div className="space-y-3">
                   <button

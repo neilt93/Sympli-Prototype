@@ -93,7 +93,7 @@ export default function LoginForm({ onLoginSuccess, onSwitchToRegister }: LoginF
       {/* Header */}
       <div className="bg-green-500 rounded-t-2xl p-6 text-white text-center mb-6">
         <div className="flex items-center justify-center mb-4">
-          <img src="/logo.svg" alt="Sympli" className="h-12" />
+          <div className="text-2xl font-extrabold tracking-wide">Sympli</div>
         </div>
         <p className="text-sm text-green-100 flex items-center justify-center gap-1">
           <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">

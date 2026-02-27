@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import RoleSelection from '../components/onboarding/RoleSelection';
 import PersonalInformation from '../components/onboarding/PersonalInformation';
 import MedicalInformation from '../components/onboarding/MedicalInformation';
+import MedicalHistory from '../components/onboarding/MedicalHistory';
+import SymptomTracking from '../components/onboarding/SymptomTracking';
 import CaregiverConsent from '../components/onboarding/CaregiverConsent';
 import DataProtection from '../components/onboarding/DataProtection';
 import RequiredConsents from '../components/onboarding/RequiredConsents';
@@ -32,6 +34,20 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     description: 'Provide basic health information for personalized insights',
     isComplete: false,
     isRequired: true
+  },
+  {
+    id: 'medical-history',
+    title: 'Medical History',
+    description: 'Share your past medical experiences and family history',
+    isComplete: false,
+    isRequired: false
+  },
+  {
+    id: 'symptom-tracking',
+    title: 'Symptom Tracking',
+    description: 'Specify what symptoms or health aspects you want to monitor',
+    isComplete: false,
+    isRequired: false
   },
   {
     id: 'caregiver',
@@ -175,6 +191,15 @@ export default function OnboardingPage() {
       currentMedications: [],
       allergiesAndReactions: []
     },
+    medicalHistory: {
+      pastMedicalHistory: '',
+      surgeriesAndProcedures: '',
+      familyHistory: ''
+    },
+    symptomTracking: {
+      trackingGoals: [],
+      additionalDetails: ''
+    },
     caregiverConsent: {
       patientFullName: '',
       relationship: '',
@@ -297,6 +322,10 @@ export default function OnboardingPage() {
       case 'medical':
         return onboardingData.medicalInformation.age !== null && 
                onboardingData.medicalInformation.sexAssignedAtBirth !== null;
+      case 'medical-history':
+        return true; // Optional step, always allow proceeding
+      case 'symptom-tracking':
+        return true; // Optional step, always allow proceeding
       case 'caregiver':
         if (onboardingData.userRole === 'caregiver') {
           return onboardingData.caregiverConsent && 
@@ -347,6 +376,26 @@ export default function OnboardingPage() {
             onUpdate={(data) => {
               setOnboardingData(prev => ({ ...prev, medicalInformation: data }));
               updateStepCompletion('medical', true);
+            }}
+          />
+        );
+      case 'medical-history':
+        return (
+          <MedicalHistory
+            data={onboardingData.medicalHistory}
+            onUpdate={(data) => {
+              setOnboardingData(prev => ({ ...prev, medicalHistory: data }));
+              updateStepCompletion('medical-history', true);
+            }}
+          />
+        );
+      case 'symptom-tracking':
+        return (
+          <SymptomTracking
+            data={onboardingData.symptomTracking}
+            onUpdate={(data) => {
+              setOnboardingData(prev => ({ ...prev, symptomTracking: data }));
+              updateStepCompletion('symptom-tracking', true);
             }}
           />
         );

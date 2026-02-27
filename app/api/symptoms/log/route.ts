@@ -38,6 +38,8 @@ export async function POST(request: NextRequest) {
 
     // Extract symptom data from the chat flow
     const symptomData = body.symptomData;
+    console.log('🔍 Debug - Received symptomData:', symptomData);
+    console.log('🔍 Debug - symptomType received:', symptomData?.symptomType);
     const socratesData = body.socratesData || {};
     const reportData = body.reportData || {};
     const tags: string[] = Array.isArray(body.tags) ? body.tags.slice(0, 12) : [];
@@ -52,8 +54,8 @@ export async function POST(request: NextRequest) {
       'other': 'Other Symptom'
     };
     
-    // Extract severity from Socrates data or default to 5
-    let severityScale = 5;
+    // Extract severity from Socrates data; if unavailable set to 0 (unknown)
+    let severityScale = 0;
     if (socratesData.severity) {
       const severityMatch = socratesData.severity.match(/(\d+)/);
       if (severityMatch) {
@@ -65,6 +67,20 @@ export async function POST(request: NextRequest) {
     const displaySymptomName = (symptomData?.customName && String(symptomData.customName).trim())
       ? String(symptomData.customName).trim()
       : (symptomNameMap[symptomData.symptomType] || 'Unknown Symptom');
+
+    // Handle custom date if provided
+    let createdAt = new Date();
+    if (symptomData.customDate) {
+      try {
+        createdAt = new Date(symptomData.customDate);
+        // Validate the date
+        if (isNaN(createdAt.getTime())) {
+          createdAt = new Date(); // Fallback to current date if invalid
+        }
+      } catch {
+        createdAt = new Date(); // Fallback to current date if parsing fails
+      }
+    }
 
     const symptomLogData = {
       user_id: user.id,
@@ -86,21 +102,30 @@ export async function POST(request: NextRequest) {
       patterns: reportData.patterns,
       treatment_response: reportData.treatmentResponse,
       progress_description: reportData.progress,
+      created_at: createdAt.toISOString(),
       additional_context: {
         llmResponses: symptomData.llmResponses,
         socratesData: socratesData,
         reportData: reportData,
-        custom_name: symptomData.customName || null
+        custom_name: symptomData.customName || null,
+        custom_date: symptomData.customDate || null,
+        user_description: symptomData.userDescription || null,
+        raw_transcript: symptomData.rawTranscript || null,
+        processed_transcript: symptomData.processedTranscript || null
       },
       symptom_data: {
         symptom: symptomData.symptomType,
         type: symptomData.isNew,
         description: symptomData.description,
+        userDescription: symptomData.userDescription || null,
+        rawTranscript: symptomData.rawTranscript || null,
+        processedTranscript: symptomData.processedTranscript || null,
         customName: symptomData.customName || null,
+        customDate: symptomData.customDate || null,
         socrates: socratesData,
         report: reportData,
         llmResponses: symptomData.llmResponses,
-        created_at: new Date().toISOString()
+        created_at: createdAt.toISOString()
       },
       tags: tags.length ? tags : null,
       metadata: {
@@ -111,6 +136,8 @@ export async function POST(request: NextRequest) {
       data_retention_until: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
     };
 
+    console.log('💾 About to save symptom log:', JSON.stringify(symptomLogData, null, 2));
+    
     const { data: symptomLog, error: insertError } = await supabaseService
       .from('symptom_logs')
       .insert(symptomLogData)
@@ -125,7 +152,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('✅ Symptom logged successfully');
+    console.log('✅ Symptom logged successfully, ID:', symptomLog.id);
+    console.log('✅ Log created_at:', symptomLogData.created_at);
 
     return NextResponse.json({
       message: 'Symptom logged successfully',

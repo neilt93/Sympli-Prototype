@@ -15,7 +15,7 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Sympli – AI Health Companion',
+  title: 'Sympli - AI Health Companion',
   description: 'Voice-first AI health companion that helps you log symptoms, track patterns, and generate reports for your GP.',
   keywords: ['health', 'AI', 'voice', 'symptoms', 'medical', 'PWA'],
   authors: [{ name: 'Sympli' }],
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     canonical: '/',
   },
   openGraph: {
-    title: 'Sympli – AI Health Companion',
+    title: 'Sympli - AI Health Companion',
     description: 'Voice-first AI health companion that helps you log symptoms, track patterns, and generate reports for your GP.',
     url: 'https://sympli.ai',
     siteName: 'Sympli',
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sympli – AI Health Companion',
+    title: 'Sympli - AI Health Companion',
     description: 'Voice-first AI health companion that helps you log symptoms, track patterns, and generate reports for your GP.',
   },
   robots: {
@@ -65,11 +65,12 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: '/favicon.ico' },
-      { url: '/logo.svg', sizes: 'any', type: 'image/svg+xml' },
+      { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512x512.png', sizes: '512x512', type: 'image/png' },
     ],
     shortcut: '/favicon.ico',
     apple: [
-      { url: '/logo.svg', sizes: '180x180', type: 'image/svg+xml' },
+      { url: '/icons/icon-180x180.png', sizes: '180x180', type: 'image/png' },
     ],
   },
 }
@@ -93,10 +94,10 @@ export default function RootLayout({
         <meta name="msapplication-tap-highlight" content="no" />
         <meta name="theme-color" content="#0ea5e9" />
         
-        <link rel="apple-touch-icon" href="/logo.svg" />
-        <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+        <link rel="apple-touch-icon" href="/icons/icon-180x180.png" />
+        <link rel="icon" type="image/png" href="/icons/icon-192x192.png" />
         <link rel="manifest" href="/manifest.json" />
-        <link rel="mask-icon" href="/logo.svg" color="#10B981" />
+        <link rel="mask-icon" href="/icons/icon-192x192.png" color="#10B981" />
         <link rel="shortcut icon" href="/favicon.ico" />
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" />
         <script src="https://accounts.google.com/gsi/client" async defer></script>

@@ -80,15 +80,14 @@ const SymptomsPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center">
-              <img src="/logo.svg" alt="Sympli" className="h-8 w-auto" />
-              <h1 className="ml-3 text-xl font-semibold text-gray-900">Sympli</h1>
+              <div className="text-xl font-bold">Sympli</div>
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => { console.log('🧭 Navigating to Past Symptoms'); router.push('/past-logs'); }}
+                onClick={() => { console.log('🧭 Navigating to Timeline'); router.push('/timeline'); }}
                 className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
               >
-                Past Symptoms
+                Timeline
               </button>
               <UserNavigation />
             </div>

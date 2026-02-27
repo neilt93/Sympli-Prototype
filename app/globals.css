@@ -166,7 +166,8 @@ All colors MUST be HSL.
   }
 
   .voice-wave {
-    @apply w-1 rounded-full bg-primary;
+    @apply w-1 rounded-full;
+    background-color: hsl(var(--primary));
     animation: pulse-wave 1.5s ease-in-out infinite;
   }
 
