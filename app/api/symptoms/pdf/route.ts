@@ -84,6 +84,37 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ PDF content structure generated successfully');
 
+    // Grammar and language refinement pass before PDF generation
+    if (openaiApiKey) {
+      for (let i = 0; i < pdfContent.sections.length; i++) {
+        const section = pdfContent.sections[i];
+        if (typeof section.content === 'string' && section.content.trim().length > 10) {
+          try {
+            const refineRes = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+              body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                temperature: 0.2,
+                max_tokens: 400,
+                messages: [
+                  { role: 'system', content: 'You are a medical copy editor. Correct grammar, spelling, and punctuation in the following clinical text. Improve clarity and readability while preserving all medical facts and meaning. Use UK English. Do not add new information or change clinical meaning. Return only the corrected text, no commentary.' },
+                  { role: 'user', content: section.content }
+                ]
+              })
+            });
+            const refineData = await refineRes.json();
+            const refined = String(refineData?.choices?.[0]?.message?.content || '').trim();
+            if (refined && refined.length > 5) {
+              pdfContent.sections[i].content = refined;
+            }
+          } catch {
+            // Keep original content if refinement fails
+          }
+        }
+      }
+    }
+
     // Generate actual PDF using the PDF generator
     const pdfGenerator = new PDFGenerator();
     const pdfDataUri = pdfGenerator.generatePDF(pdfContent);
@@ -599,11 +630,6 @@ async function generatePDFContent(data: PDFData): Promise<PDFContent> {
       {
         title: `5. QUICK HISTORY OF PATIENT${userEdited ? ' (User-edited)' : ''}`,
         content: historyTableData
-      },
-      // Removed section 6 per spec – summaries folded into timeline/frequency
-      {
-        title: '7. ATTACHMENTS (To be implemented)',
-        content: 'Attachments uploaded by the patient will appear here in a future update.'
       }
     ],
     footer: `CONFIDENTIAL MEDICAL REPORT | Generated on ${formattedDate} | Sympli\nAuto-generated report. Please confirm findings with patient.`

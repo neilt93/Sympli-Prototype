@@ -20,10 +20,23 @@ export interface PDFContent {
     content: string | PDFTableData;
   }[];
   footer: string;
-  originalLanguage?: string; // If provided and not English, show in header
-  userEdited?: boolean; // If any section was edited by user
-  confirmed?: boolean; // If user explicitly confirmed
+  originalLanguage?: string;
+  userEdited?: boolean;
+  confirmed?: boolean;
 }
+
+// Brand colour constants
+const BRAND_BLUE: [number, number, number] = [47, 128, 237]; // #2F80ED
+const TEXT_DARK: [number, number, number] = [31, 41, 55];     // gray-800
+const TEXT_SECONDARY: [number, number, number] = [75, 85, 99]; // gray-600
+const TEXT_MUTED: [number, number, number] = [107, 114, 128];  // gray-500
+const BORDER_LIGHT: [number, number, number] = [209, 213, 219]; // gray-300
+const TABLE_HEADER_BG: [number, number, number] = [47, 128, 237];
+const TABLE_ALT_ROW: [number, number, number] = [249, 250, 251]; // gray-50
+
+const LEFT_MARGIN = 20;
+const RIGHT_MARGIN = 20;
+const CONTENT_WIDTH = 170; // 210 - 20 - 20
 
 export class PDFGenerator {
   private doc: jsPDF;
@@ -37,57 +50,53 @@ export class PDFGenerator {
   }
 
   generatePDF(content: PDFContent): string {
-    // Reset per-document state
     this.headerDrawnPages.clear();
     this.footerDrawnPages.clear();
 
-    // Draw header and compute initial Y position
     let yPosition = this.drawHeader(content);
 
-    // Process each section
-    content.sections.forEach((section, index) => {
-      // If near page bottom before starting a new section, page break
-      if (yPosition > 260) {
+    content.sections.forEach((section) => {
+      if (yPosition > 255) {
         this.drawFooter();
         this.doc.addPage();
         yPosition = this.drawHeader(content);
       }
-      // Section title with better styling
-      this.doc.setFontSize(14);
-      this.doc.setFont('helvetica', 'bold');
-      this.doc.setTextColor(41, 128, 185); // Blue
-      this.doc.text(section.title, 20, yPosition);
-      yPosition += 12;
 
-      // Section content
+      // Section title
+      this.doc.setFontSize(12);
+      this.doc.setFont('helvetica', 'bold');
+      this.doc.setTextColor(...TEXT_DARK);
+      this.doc.text(section.title, LEFT_MARGIN, yPosition);
+      yPosition += 2;
+
+      // Underline below section title
+      this.doc.setDrawColor(...BORDER_LIGHT);
+      this.doc.setLineWidth(0.3);
+      this.doc.line(LEFT_MARGIN, yPosition, LEFT_MARGIN + CONTENT_WIDTH, yPosition);
+      yPosition += 8;
+
       if (typeof section.content === 'string') {
-        // Text content
         this.doc.setFontSize(10);
         this.doc.setFont('helvetica', 'normal');
-        this.doc.setTextColor(44, 62, 80); // Dark blue-gray
-        
-        // Split text into lines that fit the page width
-        const lines = this.doc.splitTextToSize(section.content, 170);
+        this.doc.setTextColor(...TEXT_SECONDARY);
+
+        const lines = this.doc.splitTextToSize(section.content, CONTENT_WIDTH);
         lines.forEach((line: string) => {
           if (yPosition > 265) {
-            // Footer for current page, then new page + header
             this.drawFooter();
             this.doc.addPage();
             yPosition = this.drawHeader(content);
           }
-          this.doc.text(line, 20, yPosition);
-          yPosition += 6;
+          this.doc.text(line, LEFT_MARGIN, yPosition);
+          yPosition += 5.5;
         });
       } else {
-        // Table content with improved styling
-        if (yPosition > 250) {
-          // Footer for current page, then new page + header
+        if (yPosition > 245) {
           this.drawFooter();
           this.doc.addPage();
           yPosition = this.drawHeader(content);
         }
 
-        // Ensure at least one placeholder row if table is empty
         const tableHeaders = section.content.headers;
         const tableRows = (section.content.rows && section.content.rows.length > 0)
           ? section.content.rows
@@ -97,27 +106,28 @@ export class PDFGenerator {
           head: [tableHeaders],
           body: tableRows,
           startY: yPosition,
-          margin: { top: 20, right: 14, bottom: 20, left: 14 },
+          margin: { top: LEFT_MARGIN, right: RIGHT_MARGIN, bottom: 25, left: LEFT_MARGIN },
           tableWidth: 'auto',
           styles: {
-            fontSize: 8,
-            cellPadding: 2,
-            lineColor: [189, 195, 199], // Light gray borders
-            lineWidth: 0.1,
+            fontSize: 8.5,
+            cellPadding: 3,
+            lineColor: BORDER_LIGHT,
+            lineWidth: 0.15,
             overflow: 'linebreak',
             cellWidth: 'auto',
-            minCellHeight: 6,
+            minCellHeight: 7,
+            textColor: TEXT_SECONDARY,
           },
           headStyles: {
-            fillColor: [52, 152, 219], // Blue header
+            fillColor: TABLE_HEADER_BG,
             textColor: 255,
             fontStyle: 'bold',
-            fontSize: 9,
-            cellPadding: 3,
-            minCellHeight: 7,
+            fontSize: 8.5,
+            cellPadding: 4,
+            minCellHeight: 8,
           },
           alternateRowStyles: {
-            fillColor: [248, 249, 250], // Very light gray
+            fillColor: TABLE_ALT_ROW,
           },
           didDrawPage: (data) => {
             const currentPage = data.pageNumber;
@@ -131,20 +141,17 @@ export class PDFGenerator {
         });
 
         const last = (this.doc as any).lastAutoTable;
-        yPosition = last && typeof last.finalY === 'number' ? last.finalY + 15 : yPosition + 15;
+        yPosition = last && typeof last.finalY === 'number' ? last.finalY + 12 : yPosition + 12;
       }
 
       yPosition += 8;
     });
 
-    // Ensure footer on the last page
     this.drawFooter();
-
-    // Return PDF as base64 string
     return this.doc.output('datauristring');
   }
 
-  downloadPDF(content: PDFContent, filename: string = 'medical-report.pdf') {
+  downloadPDF(content: PDFContent, filename: string = 'sympli-report.pdf') {
     this.generatePDF(content);
     this.doc.save(filename);
   }
@@ -152,22 +159,43 @@ export class PDFGenerator {
   private drawHeader(content: PDFContent): number {
     const currentPage = (this.doc as any).internal.getCurrentPageInfo().pageNumber;
     if (this.headerDrawnPages.has(currentPage)) {
-      // Header already drawn for this page; return baseline content Y
-      return content.patientInfo.appointmentDate ? 72 : 65;
+      return content.patientInfo.appointmentDate ? 78 : 72;
     }
 
-    // First page: full cover block; subsequent pages: minimal header
+    const pageWidth = this.doc.internal.pageSize.width;
+
     if (currentPage === 1) {
-      // Title
-      this.doc.setFontSize(18);
+      // --- Sympli logo block ---
+      // Draw a small coloured rectangle as a brand mark
+      this.doc.setFillColor(...BRAND_BLUE);
+      this.doc.roundedRect(LEFT_MARGIN, 14, 8, 8, 1.5, 1.5, 'F');
+      // Cross inside the rectangle
+      this.doc.setDrawColor(255, 255, 255);
+      this.doc.setLineWidth(1.2);
+      this.doc.line(LEFT_MARGIN + 4, 16, LEFT_MARGIN + 4, 20);
+      this.doc.line(LEFT_MARGIN + 2, 18, LEFT_MARGIN + 6, 18);
+
+      // "Sympli" text next to logo
+      this.doc.setFontSize(14);
       this.doc.setFont('helvetica', 'bold');
-      this.doc.setTextColor(44, 62, 80);
-      this.doc.text(content.title || 'Medical Appointment Report by Sympli', 20, 25);
+      this.doc.setTextColor(...BRAND_BLUE);
+      this.doc.text('Sympli', LEFT_MARGIN + 12, 21);
+
+      // Horizontal rule below logo
+      this.doc.setDrawColor(...BORDER_LIGHT);
+      this.doc.setLineWidth(0.3);
+      this.doc.line(LEFT_MARGIN, 26, pageWidth - RIGHT_MARGIN, 26);
+
+      // Title
+      this.doc.setFontSize(16);
+      this.doc.setFont('helvetica', 'bold');
+      this.doc.setTextColor(...TEXT_DARK);
+      this.doc.text(content.title || 'Medical Appointment Report', LEFT_MARGIN, 36);
 
       // Patient info
-      this.doc.setFontSize(11);
+      this.doc.setFontSize(10);
       this.doc.setFont('helvetica', 'normal');
-      this.doc.setTextColor(52, 73, 94);
+      this.doc.setTextColor(...TEXT_SECONDARY);
       const patientLine = (() => {
         if (content.patientInfo.name && content.patientInfo.name.trim()) {
           return `Patient: ${content.patientInfo.name}`;
@@ -177,45 +205,63 @@ export class PDFGenerator {
         }
         return `Patient: ${content.patientInfo.email}`;
       })();
-      this.doc.text(patientLine, 20, 40);
-      this.doc.text(`Date: ${content.patientInfo.date}`, 20, 47);
-      let nextY = 54;
+      this.doc.text(patientLine, LEFT_MARGIN, 46);
+      this.doc.text(`Date: ${content.patientInfo.date}`, LEFT_MARGIN, 52);
+      let nextY = 58;
+
       if (content.originalLanguage && content.originalLanguage.toLowerCase() !== 'english') {
-        this.doc.text(`Original language: ${content.originalLanguage}`, 20, nextY);
-        nextY += 7;
-      }
-      // Confirmation/Consent (only if explicitly confirmed), place directly below patient/date (and original language if present)
-      if (content.confirmed) {
-        this.doc.setFontSize(10);
-        this.doc.setFont('helvetica', 'italic');
-        this.doc.setTextColor(76, 86, 106);
-        this.doc.text('This report was reviewed and confirmed by the patient. Edits are indicated where applicable.', 20, nextY);
-        if (content.userEdited) {
-          this.doc.setFont('helvetica', 'bold');
-          this.doc.setFontSize(10);
-          this.doc.setTextColor(128, 0, 0);
-          this.doc.text('User-edited', 20, nextY + 7);
-          this.doc.setFont('helvetica', 'normal');
-        }
-        nextY += content.userEdited ? 14 : 7;
-      }
-      this.doc.setFontSize(11);
-      this.doc.setFont('helvetica', 'normal');
-      this.doc.setTextColor(52, 73, 94);
-      if (content.patientInfo.appointmentDate) {
-        this.doc.text(`Appointment: ${content.patientInfo.appointmentDate}`, 20, nextY);
+        this.doc.text(`Original language: ${content.originalLanguage}`, LEFT_MARGIN, nextY);
+        nextY += 6;
       }
 
+      if (content.confirmed) {
+        this.doc.setFontSize(9);
+        this.doc.setFont('helvetica', 'italic');
+        this.doc.setTextColor(...TEXT_MUTED);
+        this.doc.text('This report was reviewed and confirmed by the patient.', LEFT_MARGIN, nextY);
+        if (content.userEdited) {
+          this.doc.setFont('helvetica', 'bold');
+          this.doc.setFontSize(9);
+          this.doc.setTextColor(153, 27, 27); // red-800
+          this.doc.text('Contains patient edits', LEFT_MARGIN + 120, nextY);
+          this.doc.setFont('helvetica', 'normal');
+        }
+        nextY += 6;
+      }
+
+      if (content.patientInfo.appointmentDate) {
+        this.doc.setFontSize(10);
+        this.doc.setFont('helvetica', 'normal');
+        this.doc.setTextColor(...TEXT_SECONDARY);
+        this.doc.text(`Appointment: ${content.patientInfo.appointmentDate}`, LEFT_MARGIN, nextY);
+        nextY += 6;
+      }
+
+      // Separator before content
+      this.doc.setDrawColor(...BORDER_LIGHT);
+      this.doc.setLineWidth(0.3);
+      this.doc.line(LEFT_MARGIN, nextY + 2, pageWidth - RIGHT_MARGIN, nextY + 2);
+
       this.headerDrawnPages.add(currentPage);
-      return nextY + 7;
+      return nextY + 10;
     } else {
-      // Minimal header on subsequent pages
-      this.doc.setFontSize(12);
-      this.doc.setFont('helvetica', 'bold');
-      this.doc.setTextColor(44, 62, 80);
-      this.doc.text(content.title || 'Medical Appointment Report by Sympli', 20, 20);
+      // Continuation header
+      this.doc.setFontSize(9);
+      this.doc.setFont('helvetica', 'normal');
+      this.doc.setTextColor(...TEXT_MUTED);
+      this.doc.text('Sympli', LEFT_MARGIN, 14);
+      this.doc.text(content.title || 'Medical Appointment Report', LEFT_MARGIN + 20, 14);
+
+      // Page number on right
+      const totalPages = (this.doc as any).internal.getNumberOfPages();
+      this.doc.text(`Page ${currentPage} of ${totalPages}`, pageWidth - RIGHT_MARGIN - 25, 14);
+
+      this.doc.setDrawColor(...BORDER_LIGHT);
+      this.doc.setLineWidth(0.2);
+      this.doc.line(LEFT_MARGIN, 17, pageWidth - RIGHT_MARGIN, 17);
+
       this.headerDrawnPages.add(currentPage);
-      return 30; // baseline for content on subsequent pages
+      return 24;
     }
   }
 
@@ -224,20 +270,24 @@ export class PDFGenerator {
     if (this.footerDrawnPages.has(currentPage)) return;
 
     const pageHeight = this.doc.internal.pageSize.height;
-    const leftMargin = 20;
-    const footerTop = pageHeight - 20;
+    const pageWidth = this.doc.internal.pageSize.width;
+    const footerTop = pageHeight - 18;
 
     // Separator line
-    this.doc.setDrawColor(189, 195, 199);
-    this.doc.setLineWidth(0.5);
-    this.doc.line(leftMargin, footerTop - 6, 190, footerTop - 6);
+    this.doc.setDrawColor(...BORDER_LIGHT);
+    this.doc.setLineWidth(0.2);
+    this.doc.line(LEFT_MARGIN, footerTop - 4, pageWidth - RIGHT_MARGIN, footerTop - 4);
 
-    // Footer text per spec
-    this.doc.setFontSize(8);
+    // Footer text
+    this.doc.setFontSize(7.5);
     this.doc.setFont('helvetica', 'normal');
-    this.doc.setTextColor(128, 128, 128);
-    this.doc.text('© 2025 Sympli MED Ltd.', leftMargin, footerTop);
-    this.doc.text('Generated by Sympli – your voice, your health, your story.', leftMargin, footerTop + 6);
+    this.doc.setTextColor(...TEXT_MUTED);
+    this.doc.text('Sympli MED Ltd. | Confidential Medical Report', LEFT_MARGIN, footerTop);
+    this.doc.text('Auto-generated. Please confirm findings with patient.', LEFT_MARGIN, footerTop + 4);
+
+    // Page number
+    const totalPages = (this.doc as any).internal.getNumberOfPages();
+    this.doc.text(`${currentPage} / ${totalPages}`, pageWidth - RIGHT_MARGIN - 10, footerTop);
 
     this.footerDrawnPages.add(currentPage);
   }

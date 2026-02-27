@@ -819,11 +819,7 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
           tags.join(' '),
           '',
           '---',
-          'Attachments:',
-          'None',
-          '',
-          '---',
-          '✅ Confirmed by User: Yes',
+          'Confirmed by User: Yes',
           '✅ Consent Given: Yes',
           `🕒 Timestamp: ${ts} BST`,
           '',
@@ -1055,54 +1051,60 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
   }, []);
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      <div className="bg-[#F2FBF6] rounded-xl shadow-sm border border-[#CDEEDB] overflow-hidden">
-        <div className="bg-[#2EB872] px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white">💬</div>
-            <div>
-              <div className="text-white font-semibold">Sympli</div>
-              <div className="text-white/90 text-xs">Voice-first health companion</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-4">
-          <div className="min-h-[24rem] max-h-[36rem] overflow-y-auto">
-            <AnimatePresence>{messages.map(renderMessage)}</AnimatePresence>
-            {isLoading && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start mb-4">
-                <div className="bg-white px-4 py-2 rounded-lg border border-gray-200">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                  </div>
+    <div className="h-full flex flex-col bg-white">
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
+        <div className="max-w-2xl mx-auto">
+          <AnimatePresence>{messages.map(renderMessage)}</AnimatePresence>
+          {isLoading && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start mb-4">
+              <div className="bg-gray-50 px-4 py-3 rounded-lg">
+                <div className="flex space-x-1.5">
+                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
+                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                 </div>
-              </motion.div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+              </div>
+            </motion.div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+      </div>
 
-          <div className="mt-3 flex items-center">
-            <div className="flex-1 bg-white border border-gray-300 rounded-full px-3 py-2 flex items-center">
-              <input value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleTextSubmit(); } }} placeholder="Type your response (type 'menu' to return)..." className="w-full text-sm outline-none" />
+      {/* Input Area */}
+      <div className="flex-shrink-0 border-t border-gray-100 bg-white px-4 sm:px-6 py-3">
+        <div className="max-w-2xl mx-auto">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 flex items-center">
+              <input
+                value={userInput}
+                onChange={(e) => setUserInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleTextSubmit(); } }}
+                placeholder="Type your response..."
+                className="w-full text-sm outline-none bg-transparent text-gray-900 placeholder-gray-400"
+              />
             </div>
             <button
               onClick={handleTextSubmit}
               disabled={isLoading || !userInput.trim()}
-              className={`ml-2 w-10 h-10 rounded-full flex items-center justify-center text-white ${isLoading || !userInput.trim() ? 'bg-gray-300 cursor-not-allowed' : 'bg-[#2EB872] hover:bg-[#26a564]'}`}
+              className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${isLoading || !userInput.trim() ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-[#2F80ED] hover:bg-[#2570D4] text-white'}`}
               aria-label="Send message"
             >
-              ➤
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19V5m0 0l-7 7m7-7l7 7" />
+              </svg>
             </button>
-            <button onClick={toggleRecording} className={`ml-2 w-10 h-10 rounded-full flex items-center justify-center text-white ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-[#2EB872] hover:bg-[#26a564]'}`} aria-label="Toggle voice recording" aria-pressed={isRecording}>
-              {isRecording ? <Square size={16} /> : <Mic size={16} />}
+            <button
+              onClick={toggleRecording}
+              className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
+              aria-label="Toggle voice recording"
+              aria-pressed={isRecording}
+            >
+              {isRecording ? <Square size={14} /> : <Mic size={14} />}
             </button>
           </div>
-          {micError && <div className="text-xs text-red-600 mt-2">{micError}</div>}
-
-          <div className="text-xs text-gray-600 mt-2 flex items-center"><span className="mr-1">🔒</span> Private & HIPAA-compliant</div>
+          {micError && <div className="text-xs text-red-500 mt-1.5">{micError}</div>}
+          <div className="text-xs text-gray-400 mt-1.5 text-center">Private and secure. Type &quot;menu&quot; to return to options.</div>
         </div>
       </div>
     </div>

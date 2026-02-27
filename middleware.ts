@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // Public routes that don't require auth
 const PUBLIC_PATHS = new Set([
   '/',
+  '/about',
   '/auth',
   '/verify-email',
   '/api/auth/login',
