@@ -74,18 +74,18 @@ const SymptomsPage: React.FC = () => {
   }, []); // Remove router dependency to prevent re-runs
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center">
-              <div className="text-xl font-bold">Sympli</div>
-            </div>
-            <div className="flex items-center gap-2">
+      <header className="bg-white">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6">
+          <div className="flex justify-between items-center h-16">
+            <a href="/symptoms" className="flex items-center">
+              <img src="/logo.jpeg" alt="Sympli" className="w-28 -ml-2" style={{ objectFit: 'contain', objectPosition: 'left center' }} />
+            </a>
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => { console.log('🧭 Navigating to Timeline'); router.push('/timeline'); }}
-                className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                className="text-[#34A853] hover:text-[#2d9249] px-3 py-2 rounded-lg text-sm font-medium transition-colors"
               >
                 Timeline
               </button>
@@ -95,13 +95,26 @@ const SymptomsPage: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content - Chat or Timeline */}
-      <main className="flex-1 flex flex-col p-6">
-        {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'timeline' && token ? (
-          <SymptomTimeline token={token} />
-        ) : (
-          <SymptomChat />
-        )}
+      {/* Main Content — phone-frame chat */}
+      <main className="flex-1 flex items-start justify-center px-4 py-6">
+        <div className="w-full max-w-lg flex flex-col bg-white rounded-2xl shadow-[0_2px_20px_rgba(0,0,0,0.08)] overflow-hidden" style={{ height: 'calc(100vh - 7rem)' }}>
+          {/* Phone frame inner header */}
+          <div className="flex items-center justify-between px-4 py-2.5 bg-[#f8faf8]">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-[#34A853]"></div>
+              <span className="text-sm font-semibold text-[#2d6a3f]">Sympli Chat</span>
+            </div>
+            <span className="text-[11px] text-gray-400">Secure</span>
+          </div>
+          {/* Chat content */}
+          <div className="flex-1 min-h-0">
+            {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'timeline' && token ? (
+              <SymptomTimeline token={token} />
+            ) : (
+              <SymptomChat />
+            )}
+          </div>
+        </div>
       </main>
     </div>
   );

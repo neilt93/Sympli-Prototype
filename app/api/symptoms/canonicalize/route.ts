@@ -1,54 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuthenticatedUser } from '../../../lib/api-auth';
+import { moderateInput, structuredCompletion } from '../../../lib/openai';
 
 export const dynamic = 'force-dynamic';
 
-const openaiApiKey = process.env.OPENAI_API_KEY;
+function fallbackCanonical(input: string): string {
+  let t = input
+    .replace(/[“”]/g, '"')
+    .replace(/[’]/g, "'")
+    .replace(/\b(hurts|sore|tender|aching|ache)\b/gi, 'pain')
+    .replace(/\b(pain\s+in|pain\s+at|pain\s+on|pain\s+of)\b/gi, 'pain')
+    .replace(/^\s*(my|the|a|an)\s+/i, '')
+    .replace(/[.!?]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .trim();
+  return t || input.toLowerCase();
+}
 
 export async function POST(request: NextRequest) {
   try {
+    const { errorResponse } = await requireAuthenticatedUser(request);
+    if (errorResponse) return errorResponse;
+
     const { text } = await request.json();
     const input = String(text || '').trim();
     if (!input) return NextResponse.json({ error: 'Missing text' }, { status: 400 });
 
-    // Fallback normaliser if no key
-    const fallback = () => {
-      let t = input
-        .replace(/[“”]/g, '"')
-        .replace(/[’]/g, "'")
-        .replace(/\b(hurts|sore|tender|aching|ache)\b/gi, 'pain')
-        .replace(/\b(pain\s+in|pain\s+at|pain\s+on|pain\s+of)\b/gi, 'pain')
-        .replace(/^\s*(my|the|a|an)\s+/i, '')
-        .replace(/[.!?]+$/g, '')
-        .replace(/\s+/g, ' ')
-        .toLowerCase()
-        .trim();
-      return t || input.toLowerCase();
-    };
-
-    if (!openaiApiKey) {
-      return NextResponse.json({ term: fallback() });
+    const moderation = await moderateInput(input);
+    if (moderation.blocked) {
+      return NextResponse.json(
+        { error: 'Please provide a safe health-related symptom description.' },
+        { status: 400 }
+      );
     }
 
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
-      body: JSON.stringify({
+    try {
+      const parsed = await structuredCompletion<{ term: string }>({
+        schemaName: 'canonical_symptom_term',
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            term: { type: 'string' }
+          },
+          required: ['term']
+        },
+        system: 'Convert free-text symptoms into a concise UK-English clinical noun phrase suitable for a log title.',
+        user: `Input symptom: ${input}\nReturn a short phrase only.`,
         model: 'gpt-4o-mini',
-        temperature: 0.2,
-        max_tokens: 30,
-        messages: [
-          { role: 'system', content: 'Convert the user\'s free-text symptom into a concise clinical noun phrase (UK English), suitable as a log title. Do not add punctuation. Prefer forms like "left leg pain", "right shoulder tendon pain", "abdominal cramps". Keep it short and specific. Output only the phrase.' },
-          { role: 'user', content: input }
-        ]
-      })
-    });
-    const data = await res.json();
-    const term = (data?.choices?.[0]?.message?.content || '').trim();
-    if (!term) return NextResponse.json({ term: fallback() });
-    return NextResponse.json({ term });
-  } catch (e) {
+        temperature: 0.1,
+        maxTokens: 40,
+      });
+
+      const term = String(parsed?.term || '').trim();
+      return NextResponse.json({ term: term || fallbackCanonical(input) });
+    } catch {
+      return NextResponse.json({ term: fallbackCanonical(input) });
+    }
+  } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-
 

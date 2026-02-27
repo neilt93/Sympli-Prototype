@@ -1,0 +1,18 @@
+[
+  {
+    "id": "headache-progression",
+    "input": "I have had a one-sided throbbing headache for 3 days, 7 out of 10, worse with bright light and no fever.",
+    "expected_keywords": ["headache", "throbbing", "3 days"]
+  },
+  {
+    "id": "fatigue-impact",
+    "input": "I feel exhausted every afternoon for two weeks and now I struggle to finish work and need naps.",
+    "expected_keywords": ["fatigue", "two weeks", "work"]
+  },
+  {
+    "id": "side-effect-medication",
+    "input": "Since starting antibiotics yesterday I have nausea and loose stools but no blood and no chest pain.",
+    "expected_keywords": ["antibiotics", "nausea", "yesterday"]
+  }
+]
+

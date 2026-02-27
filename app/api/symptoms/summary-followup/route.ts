@@ -1,139 +1,110 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuthenticatedUser } from '../../../lib/api-auth';
+import { moderateInput, structuredCompletion } from '../../../lib/openai';
+
+type FollowupExtraction = {
+  onsetTimeline: string;
+  mainSymptoms: string;
+  associatedSymptoms: string;
+  triggers: string;
+  recentChanges: string;
+  familyHistory: string;
+};
+
+function fallback(userId: string): FollowupExtraction {
+  const msg = `The ${userId} has not provided enough information about this`;
+  return {
+    onsetTimeline: msg,
+    mainSymptoms: msg,
+    associatedSymptoms: msg,
+    triggers: msg,
+    recentChanges: msg,
+    familyHistory: msg,
+  };
+}
+
+function formatLegacy(extractions: FollowupExtraction): string {
+  return [
+    `**Onset/timeline**: ${extractions.onsetTimeline}`,
+    `**Main symptoms**: ${extractions.mainSymptoms}`,
+    `**Associated symptoms**: ${extractions.associatedSymptoms}`,
+    `**Triggers**: ${extractions.triggers}`,
+    `**Recent changes**: ${extractions.recentChanges}`,
+    `**Family history**: ${extractions.familyHistory}`,
+  ].join('\n');
+}
 
 export async function POST(request: NextRequest) {
   try {
+    const { user, errorResponse } = await requireAuthenticatedUser(request);
+    if (errorResponse || !user) return errorResponse!;
+
     const body = await request.json();
-    const { combined, user_id } = body;
-
-    console.log('📋 Generating summary follow-up extractions for:', { combined, user_id });
-
-    // Generate AI-based summary follow-up extractions using LLM
-    const extractions = await generateSummaryFollowup(combined, user_id);
-
-    return NextResponse.json({
-      extractions
-    });
-
-  } catch (error) {
-    console.error('❌ Error in summary followup API:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-async function generateSummaryFollowup(combined: string, user_id: string): Promise<string> {
-  try {
-    // Use the exact summary_followup prompt provided
-    const prompt = `Based on the raw input in ${combined} you need to draw out some **BULLET POINT NUMBERED EXTRACTIONS**
-These **BULLET POINT NUMBERED EXTRACTIONS** should look something like Example 1 below.
-
-Example 1 start:
-
-**Onset/timeline**: The symptoms started about two weeks ago and have been getting worse.  
-**Main symptoms**: I've been needing to pee more, especially during the night.  
-**Associated symptoms**: No vision changes, dizziness, or headaches.
-**Triggers**: My appetite's the same, but I've lost some weight — my clothes are definitely looser.  
-**Recent changes**: No infections or new medications.  
-**Family history**: My dad has type 2 diabetes.
-
-Example 1 end:
-
-If the user has not provided enough infomation to explain any of the **BULLET POINT NUMBERED EXTRACTIONS** then it should say "The ${user_id} has not provided enough information about this"
-
-Look below at Example 2 for an idea on how this works. 
-
-Example 2 start:
-
-**Onset/timeline**: The symptoms started about two weeks ago and have been getting worse.  
-**Main symptoms**: I've been needing to pee more, especially during the night.  
-**Associated symptoms**: The ${user_id} has not provided enough information about this
-**Triggers**: The ${user_id} has not provided enough information about this
-**Recent changes**: No infections or new medications.  
-**Family history**: The ${user_id} has not provided enough information about this
-
-Example 2 end:`;
-
-    // Call OpenAI API
-    const openaiApiKey = process.env.OPENAI_API_KEY;
-    
-    if (!openaiApiKey) {
-      console.log('⚠️ No OpenAI API key found, using fallback extractions');
-      return generateFallbackExtractions(combined, user_id);
+    const combined = String(body?.combined || '').trim();
+    if (!combined) {
+      return NextResponse.json({ error: 'combined is required' }, { status: 400 });
     }
 
-    // Use gpt-4o-mini for extraction generation
+    const moderation = await moderateInput(combined);
+    if (moderation.blocked) {
+      const empty = fallback(user.id);
+      return NextResponse.json({ extractions: formatLegacy(empty), extractionFields: empty });
+    }
+
     try {
-      console.log(`🤖 Generating summary followup extractions with gpt-4o-mini`);
-      
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openaiApiKey}`
+      const parsed = await structuredCompletion<FollowupExtraction>({
+        schemaName: 'summary_followup',
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            onsetTimeline: { type: 'string' },
+            mainSymptoms: { type: 'string' },
+            associatedSymptoms: { type: 'string' },
+            triggers: { type: 'string' },
+            recentChanges: { type: 'string' },
+            familyHistory: { type: 'string' }
+          },
+          required: [
+            'onsetTimeline',
+            'mainSymptoms',
+            'associatedSymptoms',
+            'triggers',
+            'recentChanges',
+            'familyHistory'
+          ]
         },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a UK-based NHS GP assistant. Extract structured clinical information from patient input using the specified bullet point format. Be thorough but concise.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.4, // Balanced temperature for structured extraction
-          max_tokens: 600,
-          presence_penalty: 0.1,
-          frequency_penalty: 0.1
-        })
+        system: 'You are a UK NHS GP assistant. Extract structured clinical follow-up fields from patient text.',
+        user: [
+          'Use concise clinical phrasing.',
+          `If information is missing, use: "The ${user.id} has not provided enough information about this".`,
+          `Input: ${combined}`
+        ].join('\n'),
+        model: 'gpt-4o-mini',
+        temperature: 0.2,
+        maxTokens: 350,
       });
 
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status}`);
-      }
+      const extractionFields: FollowupExtraction = {
+        onsetTimeline: String(parsed?.onsetTimeline || '').trim() || `The ${user.id} has not provided enough information about this`,
+        mainSymptoms: String(parsed?.mainSymptoms || '').trim() || `The ${user.id} has not provided enough information about this`,
+        associatedSymptoms: String(parsed?.associatedSymptoms || '').trim() || `The ${user.id} has not provided enough information about this`,
+        triggers: String(parsed?.triggers || '').trim() || `The ${user.id} has not provided enough information about this`,
+        recentChanges: String(parsed?.recentChanges || '').trim() || `The ${user.id} has not provided enough information about this`,
+        familyHistory: String(parsed?.familyHistory || '').trim() || `The ${user.id} has not provided enough information about this`,
+      };
 
-      const data = await response.json();
-      const aiResponse = data.choices[0]?.message?.content;
-      
-      if (!aiResponse) {
-        throw new Error('No response from OpenAI');
-      }
-
-      console.log(`✅ Summary followup extractions generated successfully`);
-      return aiResponse.trim();
-
-    } catch (error) {
-      console.log(`❌ Error with gpt-4o-mini:`, error.message);
-      console.error('❌ Using fallback extractions');
-      return generateFallbackExtractions(combined, user_id);
+      return NextResponse.json({
+        extractions: formatLegacy(extractionFields),
+        extractionFields,
+      });
+    } catch {
+      const empty = fallback(user.id);
+      return NextResponse.json({ extractions: formatLegacy(empty), extractionFields: empty });
     }
-
   } catch (error) {
-    console.error('❌ Error calling OpenAI API:', error);
-    return generateFallbackExtractions(combined, user_id);
+    console.error('Error in summary follow-up API:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-function generateFallbackExtractions(combined: string, user_id: string): string {
-  // Simple fallback extractions if AI fails
-  if (!combined || combined.trim().length < 10) {
-    return `**Onset/timeline**: The ${user_id} has not provided enough information about this\n**Main symptoms**: The ${user_id} has not provided enough information about this\n**Associated symptoms**: The ${user_id} has not provided enough information about this\n**Triggers**: The ${user_id} has not provided enough information about this\n**Recent changes**: The ${user_id} has not provided enough information about this\n**Family history**: The ${user_id} has not provided enough information about this`;
-  }
-  
-  // Basic extraction attempt
-  const lines = combined.split('\n').filter(line => line.trim().length > 0);
-  const extractions = [
-    `**Onset/timeline**: ${lines[0] || `The ${user_id} has not provided enough information about this`}`,
-    `**Main symptoms**: ${lines[1] || `The ${user_id} has not provided enough information about this`}`,
-    `**Associated symptoms**: The ${user_id} has not provided enough information about this`,
-    `**Triggers**: The ${user_id} has not provided enough information about this`,
-    `**Recent changes**: The ${user_id} has not provided enough information about this`,
-    `**Family history**: The ${user_id} has not provided enough information about this`
-  ];
-  
-  return extractions.join('\n');
-}

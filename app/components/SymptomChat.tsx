@@ -11,6 +11,9 @@ interface SymptomData {
   isNew: 'new' | 'ongoing';
   description: string;
   customName?: string;
+  userDescription?: string;
+  rawTranscript?: string;
+  processedTranscript?: string;
   socratesData?: {
     site: string;
     onset: string;
@@ -71,6 +74,9 @@ type SymptomChatProps = {
   onCancel?: () => void;
 };
 
+type FlowType = 'none' | 'symptom' | 'timeline' | 'pdf';
+type SwitchTarget = FlowType | null;
+
 const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete, onCancel }) => {
   const router = useRouter();
 
@@ -79,7 +85,7 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
   const initialPrologueMessage: ChatMessage = {
     id: 'prologue',
     type: 'agent',
-    content: "Hi, I'm Sympli, your voice-first health companion. I'm here to help you track symptoms, spot patterns, and prepare for appointments — all in your own words.",
+    content: "Hi, I'm Sympli. I can help you log symptoms step by step in plain language.",
     timestamp: new Date(),
   };
   const initialMenuMessage: ChatMessage = {
@@ -101,8 +107,13 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
   const [isLoading, setIsLoading] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const questionIndexRef = useRef(0);
+  const typingTimerRef = useRef<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [userInput, setUserInput] = useState('');
+  const [activeFlow, setActiveFlow] = useState<FlowType>('none');
+  const activeFlowRef = useRef<FlowType>('none');
+  const pendingFlowSwitchRef = useRef<SwitchTarget>(null);
+  const nurseCapturedTextRef = useRef<string>('');
   const questionAbortRef = useRef<AbortController | null>(null);
   const newId = () => (globalThis.crypto?.randomUUID?.() || String(Date.now() + Math.random()));
   const awaitingOtherConfirmRef = useRef<{ candidate: string } | null>(null);
@@ -113,6 +124,12 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const [micError, setMicError] = useState<string | null>(null);
+  const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
+  const [pendingTranscriptDraft, setPendingTranscriptDraft] = useState('');
+  const [isBotTyping, setIsBotTyping] = useState(false);
+  const [simpleMode] = useState(true);
+  const [largeTextMode] = useState(true);
+  const isButtonProcessingRef = useRef(false);
 
   // Post-save choice flag
   const awaitingPostSaveRef = useRef(false);
@@ -132,15 +149,145 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
     getUser();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      try {
+        if (typingTimerRef.current) {
+          window.clearTimeout(typingTimerRef.current);
+        }
+      } catch {}
+    };
+  }, []);
+
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  const pushAgentQuestion = (text: string, options?: string[], inputType: 'text' | 'buttons' | 'textarea' = 'text') => {
-    setMessages(prev => [...prev, { id: newId(), type: 'agent', content: text, timestamp: new Date(), isQuestion: true, options, inputType }]);
+  const pushAgentQuestion = (
+    text: string,
+    options?: string[],
+    inputType: 'text' | 'buttons' | 'textarea' = 'text',
+    stream: boolean = false
+  ) => {
+    if (!stream) {
+      setMessages(prev => [...prev, { id: newId(), type: 'agent', content: text, timestamp: new Date(), isQuestion: true, options, inputType }]);
+      setChatForSave(prev => [...prev, { role: 'agent', content: text }]);
+      return;
+    }
+
+    const id = newId();
+    setMessages(prev => [...prev, { id, type: 'agent', content: '', timestamp: new Date(), isQuestion: true, options, inputType }]);
     setChatForSave(prev => [...prev, { role: 'agent', content: text }]);
+
+    if (typingTimerRef.current) {
+      window.clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+
+    let cursor = 0;
+    const step = () => {
+      cursor = Math.min(text.length, cursor + Math.max(1, Math.floor(text.length / 40)));
+      setMessages(prev => prev.map((message) => (
+        message.id === id ? { ...message, content: text.slice(0, cursor) } : message
+      )));
+      if (cursor < text.length) {
+        typingTimerRef.current = window.setTimeout(step, 20);
+      }
+    };
+    step();
+  };
+
+  const setFlow = (flow: FlowType) => {
+    activeFlowRef.current = flow;
+    setActiveFlow(flow);
+  };
+
+  const flowLabel = (flow: FlowType) => {
+    if (flow === 'symptom') return 'Symptom intake';
+    if (flow === 'timeline') return 'Timeline review';
+    if (flow === 'pdf') return 'GP report prep';
+    return 'Nurse desk';
+  };
+
+  const detectFlowIntent = (text: string): Exclude<FlowType, 'none'> | null => {
+    const t = text.toLowerCase();
+    if (/\b(pdf|report|gp|appointment summary)\b/.test(t)) return 'pdf';
+    if (/\b(timeline|history|past logs|search logs)\b/.test(t)) return 'timeline';
+    if (/\b(symptom|pain|headache|fatigue|nausea|dizziness|cough|breath|bleeding|log)\b/.test(t)) return 'symptom';
+    return null;
+  };
+
+  const detectFlowSwitchRequest = (text: string): Exclude<FlowType, 'none'> | null => {
+    const t = text.toLowerCase();
+    if (/\b(switch|go|open|start|take me)\b.*\b(timeline|history|logs)\b|\b(timeline|history|logs)\b.*\b(instead|now)\b/.test(t)) return 'timeline';
+    if (/\b(switch|go|open|start|generate|create)\b.*\b(pdf|report|gp)\b|\b(pdf|report|gp)\b.*\b(instead|now)\b/.test(t)) return 'pdf';
+    if (/\b(switch|go|open|start)\b.*\b(symptom|log symptom|intake)\b|\b(log symptom|symptom intake)\b.*\b(instead|now)\b/.test(t)) return 'symptom';
+    return null;
+  };
+
+  const pauseAfterButtonPress = async () => {
+    const delayMs = 450 + Math.floor(Math.random() * 500); // 450-950ms
+    setIsBotTyping(true);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    setIsBotTyping(false);
+  };
+
+  const nurseTriageOutsideFlow = async (text: string) => {
+    const trimmed = text.trim();
+    const intent = detectFlowIntent(trimmed);
+
+    if (intent === 'timeline') {
+      pushAgentQuestion(
+        'I can help with your timeline now. Would you like me to open it?',
+        ['Start Timeline', 'Not now'],
+        'buttons'
+      );
+      return;
+    }
+
+    if (intent === 'pdf') {
+      pushAgentQuestion(
+        'I can help prepare your GP report. Start that flow now?',
+        ['Start GP Report', 'Not now'],
+        'buttons'
+      );
+      return;
+    }
+
+    if (intent === 'symptom') {
+      nurseCapturedTextRef.current = trimmed;
+      pushAgentQuestion(
+        `Thanks for sharing that. I can guide you through this like a nurse intake. Start now?`,
+        ['Start Symptom Log', 'Not now'],
+        'buttons'
+      );
+      return;
+    }
+
+    pushAgentQuestion(
+      'I can help in three ways: log a symptom, review timeline, or create a GP report. Which one would you like?',
+      ['Log a Symptom', 'View Timeline', 'Generate PDF Report'],
+      'buttons'
+    );
+  };
+
+  const handleHelpAction = () => {
+    pushAgentQuestion(
+      'Help options:\n1) Tap the microphone and speak slowly.\n2) You can type short answers.\n3) Use "menu" any time to go back.\n4) Use the Urgent button for emergency advice.'
+    );
+  };
+
+  const handleUrgentAction = () => {
+    pushAgentQuestion(
+      'If you have chest pain, severe breathing problems, heavy bleeding, stroke symptoms, or feel unsafe, call emergency services now. In the UK, call 999. For urgent non-emergency advice, use NHS 111.',
+      ['Back to menu'],
+      'buttons'
+    );
   };
 
   const showMainMenu = () => {
     // reset flow state
+    setFlow('none');
+    pendingFlowSwitchRef.current = null;
+    nurseCapturedTextRef.current = '';
     questionIndexRef.current = 0;
     setCurrentQuestionIndex(0);
     setCurrentSymptomData({ ...defaultSymptom });
@@ -159,10 +306,24 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
   };
 
   const resetForNewLog = () => {
+    setFlow('symptom');
+    pendingFlowSwitchRef.current = null;
     questionIndexRef.current = 0;
     setCurrentQuestionIndex(0);
-    setCurrentSymptomData({ ...defaultSymptom });
+    const captured = nurseCapturedTextRef.current.trim();
+    setCurrentSymptomData({
+      ...defaultSymptom,
+      description: captured || '',
+      userDescription: captured || undefined,
+      rawTranscript: captured || undefined,
+      processedTranscript: captured || undefined
+    });
     sessionStartIdxRef.current = messages.length;
+    if (captured) {
+      pushAgentQuestion(`I noted: "${captured}". What are you tracking today?`, ['Headache', 'Fatigue', 'Side Effect', 'Pregnancy', 'Other'], 'buttons');
+      nurseCapturedTextRef.current = '';
+      return;
+    }
     pushAgentQuestion('What are you tracking today?', ['Headache', 'Fatigue', 'Side Effect', 'Pregnancy', 'Other'], 'buttons');
   };
 
@@ -187,6 +348,60 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
     const button = event?.target as HTMLButtonElement;
     if (button?.disabled) return;
     if (button) button.disabled = true;
+    if (isButtonProcessingRef.current) return;
+    isButtonProcessingRef.current = true;
+
+    try {
+      await pauseAfterButtonPress();
+
+    if (option === 'Start Symptom Log') {
+      markMessageAnswered(messageId, option);
+      setMessages(prev => [...prev, { id: newId(), type: 'user', content: option, timestamp: new Date() }]);
+      return resetForNewLog();
+    }
+    if (option === 'Start Timeline') {
+      markMessageAnswered(messageId, option);
+      setMessages(prev => [...prev, { id: newId(), type: 'user', content: option, timestamp: new Date() }]);
+      await showTimelineInChat('recent');
+      return;
+    }
+    if (option === 'Start GP Report') {
+      markMessageAnswered(messageId, option);
+      setMessages(prev => [...prev, { id: newId(), type: 'user', content: option, timestamp: new Date() }]);
+      startGPFlow();
+      return;
+    }
+    if (option === 'Not now') {
+      markMessageAnswered(messageId, option);
+      setMessages(prev => [...prev, { id: newId(), type: 'user', content: option, timestamp: new Date() }]);
+      pushAgentQuestion('No problem. I am here when you are ready.');
+      showMainMenu();
+      return;
+    }
+    if (option === 'Stay in current flow') {
+      markMessageAnswered(messageId, option);
+      setMessages(prev => [...prev, { id: newId(), type: 'user', content: option, timestamp: new Date() }]);
+      pendingFlowSwitchRef.current = null;
+      pushAgentQuestion(`Okay, we will continue the ${flowLabel(activeFlowRef.current)} flow.`);
+      return;
+    }
+    if (option === 'Leave current flow') {
+      markMessageAnswered(messageId, option);
+      setMessages(prev => [...prev, { id: newId(), type: 'user', content: option, timestamp: new Date() }]);
+      const target = pendingFlowSwitchRef.current;
+      pendingFlowSwitchRef.current = null;
+      if (target === 'symptom') return resetForNewLog();
+      if (target === 'timeline') {
+        await showTimelineInChat('recent');
+        return;
+      }
+      if (target === 'pdf') {
+        startGPFlow();
+        return;
+      }
+      showMainMenu();
+      return;
+    }
 
     // Handle confirmation for custom name from "Other" flow
     // Handle confirmation for similar previous logs
@@ -304,6 +519,17 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
 
     // Handle main-menu style options when not from the original intro
     if (['Log a Symptom', 'Generate PDF Report', 'View Timeline'].includes(option)) {
+      if (activeFlowRef.current !== 'none') {
+        pendingFlowSwitchRef.current = option === 'Log a Symptom' ? 'symptom' : option === 'View Timeline' ? 'timeline' : 'pdf';
+        markMessageAnswered(messageId, option);
+        setMessages(prev => [...prev, { id: newId(), type: 'user', content: option, timestamp: new Date() }]);
+        pushAgentQuestion(
+          `You are in ${flowLabel(activeFlowRef.current)}. Do you want to switch flows now?`,
+          ['Stay in current flow', 'Leave current flow'],
+          'buttons'
+        );
+        return;
+      }
       // Grey out the menu buttons by marking this message answered and echo the user's selection
       markMessageAnswered(messageId, option);
       setMessages(prev => [...prev, { id: Date.now().toString(), type: 'user', content: option, timestamp: new Date() }]);
@@ -457,17 +683,53 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
 
     // Default: continue
     await getNextQuestion();
+    } finally {
+      isButtonProcessingRef.current = false;
+    }
   };
 
   const handleTextSubmit = async () => {
     if (!userInput.trim() || isLoading) return;
     const text = userInput.trim();
 
-    // Global commands
-    if (/^(exit|quit|back|menu)$/i.test(text)) {
-      setMessages(prev => [...prev, { id: Date.now().toString(), type: 'user', content: text, timestamp: new Date() }]);
-      showMainMenu();
+    // Explicit menu command with flow-lock confirmation
+    if (/^menu$/i.test(text)) {
+      setMessages(prev => [...prev, { id: newId(), type: 'user', content: text, timestamp: new Date() }]);
+      if (activeFlowRef.current !== 'none') {
+        pendingFlowSwitchRef.current = 'none';
+        pushAgentQuestion(
+          `You are currently in ${flowLabel(activeFlowRef.current)}. Do you want to leave this flow?`,
+          ['Stay in current flow', 'Leave current flow'],
+          'buttons'
+        );
+      } else {
+        showMainMenu();
+      }
       setUserInput('');
+      return;
+    }
+
+    // Outside a flow, behave as a nurse-style conversational router.
+    if (activeFlowRef.current === 'none') {
+      setMessages(prev => [...prev, { id: newId(), type: 'user', content: text, timestamp: new Date() }]);
+      setChatForSave(prev => [...prev, { role: 'user', content: text }]);
+      setUserInput('');
+      await nurseTriageOutsideFlow(text);
+      return;
+    }
+
+    // In a flow, prevent accidental switching without confirmation.
+    const switchIntent = detectFlowSwitchRequest(text);
+    if (switchIntent && switchIntent !== activeFlowRef.current) {
+      setMessages(prev => [...prev, { id: newId(), type: 'user', content: text, timestamp: new Date() }]);
+      setChatForSave(prev => [...prev, { role: 'user', content: text }]);
+      pendingFlowSwitchRef.current = switchIntent;
+      setUserInput('');
+      pushAgentQuestion(
+        `I can switch to ${flowLabel(switchIntent)}, but you are in ${flowLabel(activeFlowRef.current)}. Would you like to switch?`,
+        ['Stay in current flow', 'Leave current flow'],
+        'buttons'
+      );
       return;
     }
 
@@ -553,7 +815,15 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
         lowered.includes('pregnan') ? 'pregnancy' : null;
       const canonicalise = async (s: string): Promise<string> => {
         try {
-          const resp = await fetch('/api/symptoms/canonicalize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: s }) });
+          const token = await getAuthToken();
+          const resp = await fetch('/api/symptoms/canonicalize', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token || ''}`
+            },
+            body: JSON.stringify({ text: s })
+          });
           const data = await resp.json();
           return String(data?.term || s).trim();
         } catch { return s.toLowerCase().trim(); }
@@ -613,7 +883,7 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
 
       if (response.ok) {
         const data = await response.json();
-        pushAgentQuestion(data.question, data.options, data.inputType || 'text');
+        pushAgentQuestion(data.question, data.options, data.inputType || 'text', true);
         questionIndexRef.current = idx + 1;
         setCurrentQuestionIndex(questionIndexRef.current);
         if (data.isComplete) await completeSymptomLog();
@@ -903,10 +1173,22 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
     try {
       const form = new FormData();
       form.append('audio', new File([blob], 'recording.webm', { type: 'audio/webm' }));
-      const res = await fetch('/api/voice/transcribe', { method: 'POST', body: form });
+      const token = await getAuthToken();
+      const res = await fetch('/api/voice/transcribe', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token || ''}` },
+        body: form
+      });
       const data = await res.json();
       if (!res.ok) { setMicError(data.error || 'Transcription failed'); return; }
-      setUserInput(prev => (prev ? prev + ' ' : '') + data.text);
+      const text = String(data?.text || '').trim();
+      if (!text) return;
+      if (data?.confirmationRequired) {
+        setPendingTranscript(text);
+        setPendingTranscriptDraft(text);
+      } else {
+        setUserInput(prev => (prev ? prev + ' ' : '') + text);
+      }
     } catch { setMicError('Transcription error'); }
   };
 
@@ -914,12 +1196,19 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
     const isUser = message.type === 'user';
     const isAnsweredQuestion = !!message.isQuestion && !!message.answered;
     const bubbleCls = isUser
-      ? 'bg-white border border-gray-300'
-      : (isAnsweredQuestion ? 'bg-gray-50 border border-gray-200' : 'bg-white');
+      ? 'bg-[#dcf8e6] bubble-tail-right'
+      : (isAnsweredQuestion ? 'bg-white/80' : 'bg-white bubble-tail-left');
+    const timeStr = message.timestamp.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     return (
       <motion.div key={message.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
-        <div className={`max-w-xl w-fit rounded-lg px-4 py-3 shadow-sm ${bubbleCls}`}>
-          <p className={`text-sm ${isAnsweredQuestion ? 'text-gray-600' : 'text-gray-800'} whitespace-pre-wrap`}>{message.content}</p>
+        <div className={`max-w-[85%] sm:max-w-xl w-fit rounded-lg px-3 py-2 shadow-sm ${bubbleCls}`}>
+          <p className={`text-sm leading-relaxed ${isAnsweredQuestion ? 'text-gray-500' : 'text-gray-800'} whitespace-pre-wrap`}>{message.content}</p>
+          <div className={`flex items-center gap-1 mt-1 ${isUser ? 'justify-end' : 'justify-start'}`}>
+            <span className="text-[11px] text-[#667781]">{timeStr}</span>
+            {isUser && (
+              <svg className="w-3.5 h-3.5 text-[#53bdeb]" viewBox="0 0 16 15" fill="currentColor"><path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.88a.32.32 0 0 1-.484.032l-.358-.325a.32.32 0 0 0-.484.032l-.378.48a.418.418 0 0 0 .036.54l1.32 1.266a.32.32 0 0 0 .484-.034l6.272-8.048a.366.366 0 0 0-.064-.512zm-4.1 0l-.478-.372a.365.365 0 0 0-.51.063L4.566 9.88a.32.32 0 0 1-.484.032L1.892 7.77a.366.366 0 0 0-.516.005l-.423.433a.364.364 0 0 0 .006.514l3.255 3.185a.32.32 0 0 0 .484-.034l6.272-8.048a.366.366 0 0 0-.064-.512z"/></svg>
+            )}
+          </div>
           {message.renderType === 'timeline' && message.logs && (
             <div className="mt-3 space-y-2">
               {message.logs.map((log) => {
@@ -931,7 +1220,7 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
                     : sevVal <= 6
                       ? 'bg-yellow-100 text-yellow-800'
                       : 'bg-red-100 text-red-700';
-                  return <span className={`text-[10px] px-2 py-0.5 rounded ${cls}`}>Severity {sevVal}/10</span>;
+                  return <span className={`text-[11px] px-2 py-0.5 rounded ${cls}`}>Severity {sevVal}/10</span>;
                 })();
                 return (
                   <div key={log.id} className="border border-gray-200 rounded-md bg-white px-3 py-2">
@@ -944,7 +1233,7 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
                         <div className="text-xs text-gray-500 whitespace-nowrap">{new Date(log.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</div>
                       </div>
                     </div>
-                    <div className="mt-2 flex items-center gap-2 text-[11px] text-gray-600">
+                    <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
                       {log.functional_impact ? <span className="truncate">Impact: {log.functional_impact}</span> : null}
                       <button
                         onClick={async () => {
@@ -967,14 +1256,14 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
           {message.isQuestion && message.options && (
             <div className="mt-3 grid grid-cols-1 gap-2">
               {message.options.map((option, idx) => {
-                const disabled = !!message.answered;
+                const disabled = !!message.answered || isLoading || isBotTyping;
                 const isSelected = message.selectedOption === option;
                 return (
                   <button
                     key={idx}
                     disabled={disabled}
                     onClick={(e) => handleButtonClick(option, message.id, e)}
-                    className={`text-left px-3 py-2 text-sm rounded-md border ${isSelected ? 'bg-gray-200 border-gray-300 text-gray-600' : 'bg-gray-50 hover:bg-gray-100 border-gray-300'} ${disabled && !isSelected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`text-left px-3 py-2 text-sm rounded-lg border transition-colors ${isSelected ? 'bg-[#e8f5ec] border-[#34A853] text-[#2d6a3f] font-medium' : 'bg-white hover:bg-[#f0faf2] border-gray-200 text-gray-700 hover:border-[#34A853]/50'} ${disabled && !isSelected ? 'opacity-40 cursor-not-allowed' : ''}`}
                   >
                     {option}
                   </button>
@@ -988,6 +1277,8 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
   };
 
   const startGPFlow = () => {
+    setFlow('pdf');
+    pendingFlowSwitchRef.current = null;
     gpFlowStateRef.current = { step: 0, answers: {} };
     askNextGPQuestion(0);
   };
@@ -1007,6 +1298,8 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
   };
 
   const showTimelineInChat = async (mode: 'recent' | 'all' | 'search', query?: string, count?: number) => {
+    setFlow('timeline');
+    pendingFlowSwitchRef.current = null;
     try {
       const token = await getAuthToken();
       let url = '/api/symptoms/logs';
@@ -1053,16 +1346,16 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
   return (
     <div className="h-full flex flex-col bg-white">
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
-        <div className="max-w-2xl mx-auto">
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="mx-auto">
           <AnimatePresence>{messages.map(renderMessage)}</AnimatePresence>
-          {isLoading && (
+          {(isLoading || isBotTyping) && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start mb-4">
-              <div className="bg-gray-50 px-4 py-3 rounded-lg">
+              <div className="bg-white px-4 py-3 rounded-lg shadow-sm bubble-tail-left">
                 <div className="flex space-x-1.5">
-                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
-                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="w-1.5 h-1.5 bg-[#34A853] rounded-full animate-bounce"></div>
+                  <div className="w-1.5 h-1.5 bg-[#34A853] rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                  <div className="w-1.5 h-1.5 bg-[#34A853] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                 </div>
               </div>
             </motion.div>
@@ -1072,39 +1365,75 @@ const SymptomChat: React.FC<SymptomChatProps> = ({ token: propToken, onComplete,
       </div>
 
       {/* Input Area */}
-      <div className="flex-shrink-0 border-t border-gray-100 bg-white px-4 sm:px-6 py-3">
-        <div className="max-w-2xl mx-auto">
+      <div className="flex-shrink-0 bg-[#f8faf8] border-t border-gray-100 px-4 py-2.5">
+        <div className="mx-auto">
+          {pendingTranscript && (
+            <div className="mb-2 rounded-lg border border-[#34A853]/30 bg-[#f8faf8] p-3">
+              <div className="text-xs text-gray-700 mb-2">
+                I heard this. Edit if needed, then add it:
+              </div>
+              <textarea
+                value={pendingTranscriptDraft}
+                onChange={(event) => setPendingTranscriptDraft(event.target.value)}
+                className="w-full rounded-md border border-gray-300 p-2 text-sm text-gray-900"
+                rows={3}
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const text = pendingTranscriptDraft.trim();
+                    if (!text) return;
+                    setUserInput((prev) => (prev ? `${prev} ${text}` : text));
+                    setPendingTranscript(null);
+                    setPendingTranscriptDraft('');
+                  }}
+                  className="rounded-md bg-[#34A853] hover:bg-[#2d9249] px-4 py-2 text-sm font-medium text-white transition-colors"
+                >
+                  Use This Text
+                </button>
+                <button
+                  onClick={() => {
+                    setPendingTranscript(null);
+                    setPendingTranscriptDraft('');
+                  }}
+                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
-            <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 flex items-center">
+            <div className="flex-1 bg-white rounded-full px-4 py-2.5 border border-gray-200 flex items-center">
               <input
                 value={userInput}
                 onChange={(e) => setUserInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleTextSubmit(); } }}
-                placeholder="Type your response..."
+                placeholder="Type your message..."
                 className="w-full text-sm outline-none bg-transparent text-gray-900 placeholder-gray-400"
               />
             </div>
             <button
               onClick={handleTextSubmit}
-              disabled={isLoading || !userInput.trim()}
-              className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${isLoading || !userInput.trim() ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-[#2F80ED] hover:bg-[#2570D4] text-white'}`}
+              disabled={isLoading || isBotTyping || !userInput.trim()}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isLoading || isBotTyping || !userInput.trim() ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-[#34A853] hover:bg-[#2d9249] text-white'}`}
               aria-label="Send message"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19V5m0 0l-7 7m7-7l7 7" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
               </svg>
             </button>
             <button
               onClick={toggleRecording}
-              className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-[#34A853] hover:bg-[#2d9249] text-white'}`}
               aria-label="Toggle voice recording"
               aria-pressed={isRecording}
             >
-              {isRecording ? <Square size={14} /> : <Mic size={14} />}
+              {isRecording ? <Square size={14} /> : <Mic size={16} />}
             </button>
           </div>
-          {micError && <div className="text-xs text-red-500 mt-1.5">{micError}</div>}
-          <div className="text-xs text-gray-400 mt-1.5 text-center">Private and secure. Type &quot;menu&quot; to return to options.</div>
+          {micError && <div className="text-xs text-red-600 mt-1">{micError}</div>}
         </div>
       </div>
     </div>

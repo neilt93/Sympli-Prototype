@@ -2,14 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
+import { requireAuthenticatedUser } from '../../../lib/api-auth';
+import { moderateInput, structuredCompletion } from '../../../lib/openai';
 
 const supabaseUrl = process.env.SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'placeholder';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder';
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 const supabaseService = createClient(supabaseUrl, supabaseServiceKey);
-const openaiApiKey = process.env.OPENAI_API_KEY;
 
 interface SymptomData {
   symptomType: 'headache' | 'fatigue' | 'side_effect' | 'pregnancy' | 'other';
@@ -30,24 +29,8 @@ interface SymptomData {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const authHeader = request.headers.get('authorization');
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Authorization header required' },
-        { status: 401 }
-      );
-    }
-
-    const token = authHeader.split(' ')[1];
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      );
-    }
+    const { user, errorResponse } = await requireAuthenticatedUser(request);
+    if (errorResponse || !user) return errorResponse!;
 
     const { currentSymptomData, currentQuestionIndex, previousMessages, collectedResponses } = body;
 
@@ -55,6 +38,14 @@ export async function POST(request: NextRequest) {
     try {
       const lastUser = (body?.previousMessages || []).slice().reverse().find((m: any) => (m.type === 'user' || m.role === 'user'));
       const txt = String(lastUser?.content || '').toLowerCase();
+      const moderation = await moderateInput(txt);
+      if (moderation.blocked) {
+        return NextResponse.json({
+          question: 'I can only help with safe health-related symptom logging. Please rephrase without harmful language.',
+          inputType: 'text',
+          isComplete: false
+        });
+      }
       const hasChestRedFlag = txt.includes('chest pain') && (txt.includes('breath') || txt.includes('sweat') || txt.includes('faint'));
       const hasPregnancyFlag = (txt.includes('pregnan')) && (txt.includes('bleeding') || (txt.includes('severe') && txt.includes('pain')));
       if (hasChestRedFlag || hasPregnancyFlag) {
@@ -136,8 +127,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-type QuestionItem = { question: string; inputType?: 'text' | 'buttons'; options?: string[] };
-
 function normalizeQuestion(text: string): string {
   return String(text || '')
     .toLowerCase()
@@ -183,8 +172,6 @@ async function generateAdaptiveQuestion(
   // No fallbacks: always ask via LLM using the unified symptom log prompt
   const customName = (symptomData as any)?.customName as string | undefined;
   const symptomText = String(customName || symptomData.description || symptomData.symptomType || '').trim();
-  const alreadySaid = (previousMessages || [])
-    .map(m => String(m.content || '')).join('\n');
   const initialIsOngoing = symptomData.isNew === 'ongoing';
   // Guidance by symptom type (used to adapt flow without special-casing a single type)
   const typeGuidanceMap: Record<SymptomData['symptomType'], string> = {
@@ -203,14 +190,6 @@ async function generateAdaptiveQuestion(
   const followupsAsked = Math.max(0, (currentQuestionIndex || 0) - 2);
   const totalFollowupsMax = 10;
   const minFollowupsRequired = 6;
-  const hasFunctionalImpact = Boolean(String((symptomData as any)?.functionalImpact || '').trim());
-  const hasEmotionalImpact = Boolean(String((symptomData as any)?.emotionalImpact || '').trim());
-  const hasSeverity = (() => {
-    try {
-      const sev = String((symptomData as any)?.socratesData?.severity || '').trim();
-      return /\b(10|[0-9])\b/.test(sev);
-    } catch { return false; }
-  })();
   // FI/EI enforcement via LLM prompt only. Do not inject deterministic questions
   if (questionNumber > totalMaxQuestions) {
     return { question: 'Thank you, I have enough information for now.', inputType: 'text', isComplete: true };
@@ -345,76 +324,37 @@ STRICT OUTPUT RULES:
     })))
   ];
 
-  // Debug: log full chat history passed to LLM
-  try {
-    const convoDump = conversation
-      .map((m: any) => `${m.role.toUpperCase()}: ${m.content}`)
-      .join('\n');
-    console.log('🧠 Chat-question: Full conversation context sent to LLM ->');
-    console.log(convoDump);
-    console.log('🧠 Chat-question: Prompt variant ->', attachmentsStage ? 'attachments' : (effectiveIsOngoing ? 'ongoing' : 'new'));
-    console.log('🧠 Chat-question: askedSoFar ->', askedSoFar);
-  } catch {}
-
-  // Debug: log the API key being used
-  console.log('🧠 Chat-question: API key being used ->', openaiApiKey ? `${openaiApiKey.substring(0, 20)}...` : 'NOT SET');
-  
-  if (!openaiApiKey) {
-    throw new Error('OPENAI_API_KEY is missing');
-  }
-
-  // Debug: log what we're sending to LLM
-  console.log('🧠 Chat-question: System prompt ->', systemPrompt);
-  console.log('🧠 Chat-question: Conversation length ->', conversation.length);
-  console.log('🧠 Chat-question: Context header ->', contextHeader);
-
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...conversation
-      ],
-      temperature: 0.6,
-      max_tokens: 200
-    })
+  const structured = await structuredCompletion<{ question: string; isComplete: boolean }>({
+    schemaName: 'chat_followup_question',
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        question: { type: 'string' },
+        isComplete: { type: 'boolean' }
+      },
+      required: ['question', 'isComplete']
+    },
+    system: systemPrompt,
+    user: [
+      `Context:\n${contextHeader}`,
+      `Previous messages:`,
+      ...conversation.map((m: any) => `${m.role.toUpperCase()}: ${m.content}`)
+    ].join('\n'),
+    model: 'gpt-4o-mini',
+    temperature: 0.5,
+    maxTokens: 220,
+    attempts: 2
   });
 
-  const data = await res.json();
-  
-  // Debug: log the full response
-  console.log('🧠 Chat-question: OpenAI response ->', JSON.stringify(data, null, 2));
-  
-  const content = data?.choices?.[0]?.message?.content as string | undefined;
-  if (!content) {
-    // No deterministic fallback; ask the LLM again
-    const retry = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...conversation
-        ],
-        temperature: 0.7,
-        max_tokens: 150
-      })
-    });
-    const retryData = await retry.json();
-    const retryContent = retryData?.choices?.[0]?.message?.content as string | undefined;
-    if (!retryContent) throw new Error('LLM returned empty content');
-    const retryQuestion = retryContent.trim().split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean).reverse().find((l: string) => /\?$/.test(l));
-    if (!retryQuestion) throw new Error('LLM returned content without a question');
-    return { question: retryQuestion, inputType: 'text', isComplete: false };
+  const parsedContent = String(structured?.question || '').trim();
+  if (!parsedContent) {
+    throw new Error('LLM returned empty question');
   }
-  const parsedContent = content.trim();
 
   // If model signalled completion, respect it when we have asked enough
   const lower = parsedContent.toLowerCase();
-  if ((lower.includes('enough information') || lower.startsWith('thank you')) && followupsAsked >= minFollowupsRequired) {
+  if ((structured?.isComplete || lower.includes('enough information') || lower.startsWith('thank you')) && followupsAsked >= minFollowupsRequired) {
     return { question: 'Thank you, I have enough information for now.', inputType: 'text', isComplete: true };
   }
 
@@ -518,47 +458,56 @@ STRICT OUTPUT RULES:
 
 async function llmProgressionAsked(previousMessages: Array<{ type?: string; role?: string; content: string }>): Promise<boolean> {
   try {
-    if (!openaiApiKey) return false;
-    const convo = (previousMessages || []).map((m: any) => ({ role: m.type === 'user' || m.role === 'user' ? 'user' : 'assistant', content: String(m.content || '') })).slice(-20);
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        temperature: 0,
-        max_tokens: 10,
-        messages: [
-          { role: 'system', content: 'Answer only YES or NO. Has the assistant already asked a progression question (better/worse/same or what has changed) about the symptom at any point in this conversation? Reply exactly YES or NO.' },
-          ...convo
-        ]
-      })
+    const convo = (previousMessages || [])
+      .map((m: any) => ({ role: m.type === 'user' || m.role === 'user' ? 'user' : 'assistant', content: String(m.content || '') }))
+      .slice(-20);
+    const verdict = await structuredCompletion<{ progressionAsked: boolean }>({
+      schemaName: 'progression_seen',
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          progressionAsked: { type: 'boolean' }
+        },
+        required: ['progressionAsked']
+      },
+      system: 'Decide if the assistant has already asked whether the symptom is better, worse, unchanged, or otherwise progressed.',
+      user: convo.map((m: any) => `${m.role.toUpperCase()}: ${m.content}`).join('\n'),
+      model: 'gpt-4o-mini',
+      temperature: 0,
+      maxTokens: 30,
+      attempts: 1
     });
-    const data = await res.json();
-    const a = String(data?.choices?.[0]?.message?.content || '').trim().toUpperCase();
-    return a.startsWith('Y');
+    return Boolean(verdict?.progressionAsked);
   } catch { return false; }
 }
 
 async function llmJudgeCandidate(previousMessages: Array<{ type?: string; role?: string; content: string }>, candidate: string): Promise<{ duplicate: boolean; category?: string } | null> {
   try {
-    if (!openaiApiKey) return null;
-    const convo = (previousMessages || []).map((m: any) => ({ role: m.type === 'user' || m.role === 'user' ? 'user' : 'assistant', content: String(m.content || '') })).slice(-20);
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        temperature: 0,
-        max_tokens: 60,
-        messages: [
-          { role: 'system', content: 'You are a UK GP intake assistant. Given a short chat history and a candidate follow-up, return strict JSON: {"duplicate":true|false, "category":"progression|impact|severity|pattern|treatment|other"}. Consider duplicates by meaning, not exact wording.' },
-          { role: 'user', content: `History:\n${convo.map(m=>m.role.toUpperCase()+': '+m.content).join('\n')}` },
-          { role: 'user', content: `Candidate: ${candidate}` }
-        ]
-      })
+    const convo = (previousMessages || [])
+      .map((m: any) => ({ role: m.type === 'user' || m.role === 'user' ? 'user' : 'assistant', content: String(m.content || '') }))
+      .slice(-20);
+    return await structuredCompletion<{ duplicate: boolean; category: 'progression' | 'impact' | 'severity' | 'pattern' | 'treatment' | 'other' }>({
+      schemaName: 'candidate_judge',
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          duplicate: { type: 'boolean' },
+          category: {
+            type: 'string',
+            enum: ['progression', 'impact', 'severity', 'pattern', 'treatment', 'other']
+          }
+        },
+        required: ['duplicate', 'category']
+      },
+      system: 'Judge whether a candidate follow-up question duplicates prior assistant questions by meaning.',
+      user: `History:\n${convo.map((m: any) => `${m.role.toUpperCase()}: ${m.content}`).join('\n')}\nCandidate: ${candidate}`,
+      model: 'gpt-4o-mini',
+      temperature: 0,
+      maxTokens: 80,
+      attempts: 1
     });
-    const data = await res.json();
-    try { return JSON.parse(String(data?.choices?.[0]?.message?.content || '').trim()); } catch { return null; }
   } catch { return null; }
 }
 
@@ -575,72 +524,5 @@ async function getPreviousSimilarSymptoms(userId: string, symptomType: string) {
     return data || [];
   } catch {
     return [];
-  }
-}
-
-async function generateLLMNextQuestion(
-  symptomData: SymptomData,
-  previousMessages: Array<{ type?: string; role?: string; content: string }>,
-  previousSimilar: any[],
-  adaptiveCount: number
-): Promise<{ question: string; options?: string[]; inputType?: 'text' | 'buttons' } | null> {
-  try {
-    const conversation = (previousMessages || []).map((m: any) => ({
-      role: m.type === 'user' || m.role === 'user' ? 'user' : 'assistant',
-      content: String(m.content || '')
-    })).slice(-12);
-
-    const previousSummary = previousSimilar.slice(0, 3).map((p, i) => {
-      const parts = [p.description, p.functional_impact, p.treatment_response, p.triggers, p.patterns, p.progress_description]
-        .filter(Boolean)
-        .join(' | ');
-      return `#${i + 1}: ${parts}`;
-    }).join('\n');
-    //prompt
-    const symptomText = String(symptomData.description || symptomData.symptomType || '').trim();
-    const systemPrompt = `You are Sympli, a helpful NHS primary care role‑play assistant. Ask exactly ONE next follow‑up question that progresses the clinical history.
-
-Context & rules:
-- You will be given the ENTIRE chat history; avoid repeating anything already asked/answered.
-- The first two questions (symptom type and new/ongoing) were already asked.
-- Follow‑ups asked so far: ${adaptiveCount}. You may ask up to 10 follow‑up questions in total, one at a time, adapting to the user's last answers.
-- If NEW: prioritise Site, Onset, Character, Radiation, Associated Symptoms, Pattern/Timing, Triggers/Relievers, Severity, Functional Impact, Emotional Impact — but ONLY what hasn't been covered yet.
-- If ONGOING: prioritise Progress, Better/Worse/Same, New Symptoms, Response to Treatment, New Triggers/Patterns, Functional Impact, Emotional Impact, Changes in Severity/Timing — and use prior similar logs if provided.
-- Prior similar logs (if any): ${previousSummary || 'None'}
-- Output exactly ONE line: the single follow‑up question ending with a question mark.
-- No bullet points. No numbering. No explanations.`;
-
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiApiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...conversation
-        ],
-        temperature: 0.6,
-        max_tokens: 200
-      })
-    });
-
-    const data = await res.json();
-    const content = data?.choices?.[0]?.message?.content as string | undefined;
-    if (!content || !content.trim()) {
-      throw new Error('LLM returned empty content');
-    }
-    
-    // Clean up the response - remove quotes and trim
-    const question = content.replace(/^"|"$/g, '').trim();
-    if (!question) {
-      throw new Error('LLM returned empty content');
-    }
-    
-    return { question, inputType: 'text' };
-  } catch {
-    return null;
   }
 }

@@ -8,6 +8,7 @@ export interface PDFTableData {
 
 export interface PDFContent {
   title: string;
+  logoBase64?: string;
   patientInfo: {
     email: string;
     date: string;
@@ -17,6 +18,7 @@ export interface PDFContent {
   };
   sections: {
     title: string;
+    description?: string;
     content: string | PDFTableData;
   }[];
   footer: string;
@@ -26,13 +28,14 @@ export interface PDFContent {
 }
 
 // Brand colour constants
-const BRAND_BLUE: [number, number, number] = [47, 128, 237]; // #2F80ED
+const BRAND_GREEN: [number, number, number] = [52, 168, 83];    // #34A853
+const BRAND_GREEN_DARK: [number, number, number] = [20, 83, 45]; // #14532D
 const TEXT_DARK: [number, number, number] = [31, 41, 55];     // gray-800
 const TEXT_SECONDARY: [number, number, number] = [75, 85, 99]; // gray-600
 const TEXT_MUTED: [number, number, number] = [107, 114, 128];  // gray-500
 const BORDER_LIGHT: [number, number, number] = [209, 213, 219]; // gray-300
-const TABLE_HEADER_BG: [number, number, number] = [47, 128, 237];
-const TABLE_ALT_ROW: [number, number, number] = [249, 250, 251]; // gray-50
+const TABLE_HEADER_BG: [number, number, number] = [52, 168, 83];  // green
+const TABLE_ALT_ROW: [number, number, number] = [245, 250, 246]; // light green tint
 
 const LEFT_MARGIN = 20;
 const RIGHT_MARGIN = 20;
@@ -63,17 +66,26 @@ export class PDFGenerator {
       }
 
       // Section title
-      this.doc.setFontSize(12);
-      this.doc.setFont('helvetica', 'bold');
-      this.doc.setTextColor(...TEXT_DARK);
+      this.doc.setFontSize(11);
+      this.doc.setFont('helvetica', 'normal');
+      this.doc.setTextColor(...BRAND_GREEN_DARK);
       this.doc.text(section.title, LEFT_MARGIN, yPosition);
-      yPosition += 2;
+      yPosition += 7;
 
-      // Underline below section title
-      this.doc.setDrawColor(...BORDER_LIGHT);
-      this.doc.setLineWidth(0.3);
-      this.doc.line(LEFT_MARGIN, yPosition, LEFT_MARGIN + CONTENT_WIDTH, yPosition);
-      yPosition += 8;
+      // Section description (italic gray) if present
+      if (section.description) {
+        this.doc.setFontSize(9);
+        this.doc.setFont('helvetica', 'italic');
+        this.doc.setTextColor(...TEXT_MUTED);
+        const descLines = this.doc.splitTextToSize(section.description, CONTENT_WIDTH);
+        descLines.forEach((line: string) => {
+          this.doc.text(line, LEFT_MARGIN, yPosition);
+          yPosition += 4.5;
+        });
+        yPosition += 3;
+      } else {
+        yPosition += 3;
+      }
 
       if (typeof section.content === 'string') {
         this.doc.setFontSize(10);
@@ -121,10 +133,10 @@ export class PDFGenerator {
           headStyles: {
             fillColor: TABLE_HEADER_BG,
             textColor: 255,
-            fontStyle: 'bold',
-            fontSize: 8.5,
-            cellPadding: 4,
-            minCellHeight: 8,
+            fontStyle: 'normal',
+            fontSize: 8,
+            cellPadding: 3,
+            minCellHeight: 7,
           },
           alternateRowStyles: {
             fillColor: TABLE_ALT_ROW,
@@ -166,29 +178,29 @@ export class PDFGenerator {
 
     if (currentPage === 1) {
       // --- Sympli logo block ---
-      // Draw a small coloured rectangle as a brand mark
-      this.doc.setFillColor(...BRAND_BLUE);
-      this.doc.roundedRect(LEFT_MARGIN, 14, 8, 8, 1.5, 1.5, 'F');
-      // Cross inside the rectangle
-      this.doc.setDrawColor(255, 255, 255);
-      this.doc.setLineWidth(1.2);
-      this.doc.line(LEFT_MARGIN + 4, 16, LEFT_MARGIN + 4, 20);
-      this.doc.line(LEFT_MARGIN + 2, 18, LEFT_MARGIN + 6, 18);
+      if (content.logoBase64) {
+        try {
+          this.doc.addImage(content.logoBase64, 'JPEG', LEFT_MARGIN, 12, 10, 10);
+        } catch {
+          // Fallback: draw a green square if image fails
+          this.doc.setFillColor(...BRAND_GREEN);
+          this.doc.roundedRect(LEFT_MARGIN, 14, 8, 8, 1.5, 1.5, 'F');
+        }
+      } else {
+        // Fallback: draw a green square
+        this.doc.setFillColor(...BRAND_GREEN);
+        this.doc.roundedRect(LEFT_MARGIN, 14, 8, 8, 1.5, 1.5, 'F');
+      }
 
       // "Sympli" text next to logo
       this.doc.setFontSize(14);
       this.doc.setFont('helvetica', 'bold');
-      this.doc.setTextColor(...BRAND_BLUE);
+      this.doc.setTextColor(...BRAND_GREEN_DARK);
       this.doc.text('Sympli', LEFT_MARGIN + 12, 21);
 
-      // Horizontal rule below logo
-      this.doc.setDrawColor(...BORDER_LIGHT);
-      this.doc.setLineWidth(0.3);
-      this.doc.line(LEFT_MARGIN, 26, pageWidth - RIGHT_MARGIN, 26);
-
       // Title
-      this.doc.setFontSize(16);
-      this.doc.setFont('helvetica', 'bold');
+      this.doc.setFontSize(14);
+      this.doc.setFont('helvetica', 'normal');
       this.doc.setTextColor(...TEXT_DARK);
       this.doc.text(content.title || 'Medical Appointment Report', LEFT_MARGIN, 36);
 
@@ -236,11 +248,6 @@ export class PDFGenerator {
         this.doc.text(`Appointment: ${content.patientInfo.appointmentDate}`, LEFT_MARGIN, nextY);
         nextY += 6;
       }
-
-      // Separator before content
-      this.doc.setDrawColor(...BORDER_LIGHT);
-      this.doc.setLineWidth(0.3);
-      this.doc.line(LEFT_MARGIN, nextY + 2, pageWidth - RIGHT_MARGIN, nextY + 2);
 
       this.headerDrawnPages.add(currentPage);
       return nextY + 10;

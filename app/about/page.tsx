@@ -12,7 +12,7 @@ export default function AboutPage() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex h-16 items-center justify-between">
             <button onClick={() => router.push('/')} className="flex items-center gap-3">
-              <img src="/logo.svg" alt="Sympli" width={120} height={40} />
+              <img src="/logo.jpeg" alt="Sympli" width={120} height={40} />
             </button>
 
             <nav className="hidden md:flex items-center gap-8 text-sm font-medium">

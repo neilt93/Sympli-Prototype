@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "eval:llm": "node scripts/eval-llm.js",
     "clean": "rm -rf .next && rm -rf node_modules/.cache && rm -rf .vercel && echo 'Cache cleared successfully!'"
   },
   "dependencies": {

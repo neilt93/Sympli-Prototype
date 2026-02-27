@@ -73,7 +73,7 @@ export default function ChatPage() {
         <div className="px-4 sm:px-6 h-14 flex items-center justify-between">
           {/* Logo and Product Name */}
           <div className="flex items-center gap-3">
-            <img src="/logo.svg" alt="Sympli" width={100} height={34} />
+            <img src="/logo.jpeg" alt="Sympli" width={100} height={34} />
           </div>
 
           {/* Navigation Actions */}

@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Search, Filter, Calendar, X, Plus, RefreshCw, AlertCircle } from 'lucide-react';
+import { ChevronLeft, Search, Calendar, X, RefreshCw, AlertCircle } from 'lucide-react';
 
 // Types
 interface SymptomLog {
@@ -393,9 +393,10 @@ export default function TimelinePage() {
   }, []);
 
   const getSeverityColor = useCallback((severity: number) => {
-    if (severity <= 3) return 'bg-gray-100 text-gray-700';
-    if (severity <= 6) return 'bg-yellow-100 text-yellow-800';
-    return 'bg-red-100 text-red-700';
+    if (severity <= 3) return 'text-green-600';
+    if (severity <= 5) return 'text-yellow-600';
+    if (severity <= 7) return 'text-orange-600';
+    return 'text-red-600';
   }, []);
 
   // Initial load
@@ -403,62 +404,60 @@ export default function TimelinePage() {
     fetchLogs();
   }, [fetchLogs]);
 
-  // Render log card
-  const renderLogCard = useCallback((log: SymptomLog, index: number) => {
+  // Severity badge color
+  const getSeverityBadgeColor = useCallback((severity: number) => {
+    if (severity <= 3) return 'text-green-600 bg-green-50 border-green-200';
+    if (severity <= 5) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+    if (severity <= 7) return 'text-orange-600 bg-orange-50 border-orange-200';
+    return 'text-red-600 bg-red-50 border-red-200';
+  }, []);
+
+  // Render timeline entry
+  const renderTimelineEntry = useCallback((log: SymptomLog, index: number, isLast: boolean) => {
     const presentingComplaint = getPresentingComplaint(log);
-    const shortComplaint = presentingComplaint.length > 100 
+    const shortComplaint = presentingComplaint.length > 100
       ? presentingComplaint.substring(0, 97) + '...'
       : presentingComplaint;
+
+    const severityVal = typeof log.severity_scale === 'number' ? log.severity_scale : null;
 
     return (
       <motion.div
         key={log.id}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: index * 0.05 }}
-        className="bg-white border border-gray-200 rounded-lg p-4 cursor-pointer hover:shadow-md transition-all duration-200 hover:border-blue-300"
+        initial={{ opacity: 0, x: -8 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: index * 0.04 }}
+        className="relative flex gap-4 cursor-pointer group"
         onClick={() => handleLogExpand(log)}
       >
-        <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <h3 className="font-semibold text-gray-900 truncate">
-                {log.symptom_name || log.symptom_type || 'Untitled Log'}
+        {/* Timeline line + dot */}
+        <div className="flex flex-col items-center flex-shrink-0 w-8">
+          <div className="w-5 h-5 rounded-full border-2 border-[#34A853] bg-white flex-shrink-0 mt-1 group-hover:bg-[#34A853]/10 transition-colors" />
+          {!isLast && (
+            <div className="w-0.5 bg-gray-200 flex-1 min-h-[40px]" />
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 pb-8 min-w-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-semibold text-gray-900 truncate">
+                {log.symptom_name || log.symptom_type || 'Untitled'}
               </h3>
-              {typeof log.severity_scale === 'number' && (
-                <span className={`text-xs px-2 py-1 rounded-full font-medium ${getSeverityColor(log.severity_scale)}`}>
-                  {log.severity_scale}/10
-                </span>
-              )}
+              <p className="text-xs text-gray-400 mt-0.5">{formatLogDate(log.created_at)}</p>
             </div>
-            <div className="text-sm text-gray-500 mb-2">
-              {formatLogDate(log.created_at)}
-            </div>
-            <div className="text-sm text-gray-700 line-clamp-2">
-              {shortComplaint}
-            </div>
-            {log.tags && log.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {log.tags.slice(0, 3).map((tag, tagIndex) => (
-                  <span
-                    key={tagIndex}
-                    className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
-                  >
-                    {tag}
-                  </span>
-                ))}
-                {log.tags.length > 3 && (
-                  <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
-                    +{log.tags.length - 3} more
-                  </span>
-                )}
-              </div>
+            {severityVal !== null && (
+              <span className={`text-sm font-semibold px-2 py-0.5 rounded border flex-shrink-0 ${getSeverityBadgeColor(severityVal)}`}>
+                {severityVal}/10
+              </span>
             )}
           </div>
+          <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">{shortComplaint}</p>
         </div>
       </motion.div>
     );
-  }, [getPresentingComplaint, formatLogDate, getSeverityColor, handleLogExpand]);
+  }, [getPresentingComplaint, formatLogDate, getSeverityBadgeColor, handleLogExpand]);
 
   // Render expanded log modal
   const renderExpandedLog = useCallback(() => {
@@ -501,83 +500,83 @@ export default function TimelinePage() {
 
             <div className="space-y-4">
               <div>
-                <h3 className="font-medium text-gray-800 mb-2">Presenting Complaint</h3>
+                <h3 className="font-medium text-gray-900 mb-1">Presenting Complaint</h3>
                 <p className="text-gray-700">{presentingComplaint}</p>
               </div>
 
               {log.description && (
                 <div>
-                  <h3 className="font-medium text-gray-800 mb-2">Description</h3>
+                  <h3 className="font-medium text-gray-900 mb-1">Description</h3>
                   <p className="text-gray-700">{log.description}</p>
                 </div>
               )}
 
               {(log as any).user_description && (
                 <div>
-                  <h3 className="font-medium text-gray-800 mb-2">User Description</h3>
+                  <h3 className="font-medium text-gray-900 mb-1">User Description</h3>
                   <p className="text-gray-700">{(log as any).user_description}</p>
                 </div>
               )}
 
               {(log as any).processed_transcript && (
                 <div>
-                  <h3 className="font-medium text-gray-800 mb-2">Processed Transcript</h3>
+                  <h3 className="font-medium text-gray-900 mb-1">Processed Transcript</h3>
                   <p className="text-gray-700">{(log as any).processed_transcript}</p>
                 </div>
               )}
 
               {log.functional_impact && (
                 <div>
-                  <h3 className="font-medium text-gray-800 mb-2">Functional Impact</h3>
+                  <h3 className="font-medium text-gray-900 mb-1">Functional Impact</h3>
                   <p className="text-gray-700">{log.functional_impact}</p>
                 </div>
               )}
 
               {log.emotional_impact && (
                 <div>
-                  <h3 className="font-medium text-gray-800 mb-2">Emotional Impact</h3>
+                  <h3 className="font-medium text-gray-900 mb-1">Emotional Impact</h3>
                   <p className="text-gray-700">{log.emotional_impact}</p>
                 </div>
               )}
 
               {log.location && (
                 <div>
-                  <h3 className="font-medium text-gray-800 mb-2">Location</h3>
+                  <h3 className="font-medium text-gray-900 mb-1">Location</h3>
                   <p className="text-gray-700">{log.location}</p>
                 </div>
               )}
 
               {(log as any).triggers && (
                 <div>
-                  <h3 className="font-medium text-gray-800 mb-2">Triggers</h3>
+                  <h3 className="font-medium text-gray-900 mb-1">Triggers</h3>
                   <p className="text-gray-700">{(log as any).triggers}</p>
                 </div>
               )}
 
               {(log as any).patterns && (
                 <div>
-                  <h3 className="font-medium text-gray-800 mb-2">Patterns</h3>
+                  <h3 className="font-medium text-gray-900 mb-1">Patterns</h3>
                   <p className="text-gray-700">{(log as any).patterns}</p>
                 </div>
               )}
 
               {(log as any).treatment_response && (
                 <div>
-                  <h3 className="font-medium text-gray-800 mb-2">Treatment Response</h3>
+                  <h3 className="font-medium text-gray-900 mb-1">Treatment Response</h3>
                   <p className="text-gray-700">{(log as any).treatment_response}</p>
                 </div>
               )}
 
               {(log as any).progress_description && (
                 <div>
-                  <h3 className="font-medium text-gray-800 mb-2">Progress Description</h3>
+                  <h3 className="font-medium text-gray-900 mb-1">Progress Description</h3>
                   <p className="text-gray-700">{(log as any).progress_description}</p>
                 </div>
               )}
 
               {(log as any).additional_context && (
                 <div>
-                  <h3 className="font-medium text-gray-800 mb-2">Additional Context</h3>
+                  <h3 className="font-medium text-gray-900 mb-1">Additional Context</h3>
                   <div className="text-gray-700">
                     {typeof (log as any).additional_context === 'string' 
                       ? (log as any).additional_context
@@ -634,12 +633,12 @@ export default function TimelinePage() {
 
               {log.tags && log.tags.length > 0 && (
                 <div>
-                  <h3 className="font-medium text-gray-800 mb-2">Tags</h3>
-                  <div className="flex flex-wrap gap-2">
+                  <h3 className="font-medium text-gray-900 mb-1">Tags</h3>
+                  <div className="flex flex-wrap gap-1.5">
                     {log.tags.map((tag, index) => (
                       <span
                         key={index}
-                        className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
+                        className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs rounded-full"
                       >
                         {tag}
                       </span>
@@ -648,17 +647,6 @@ export default function TimelinePage() {
                 </div>
               )}
 
-              {/* Debug info */}
-              <div className="mt-6 p-3 bg-gray-50 rounded-lg">
-                <h3 className="font-medium text-gray-800 mb-2">Debug Info</h3>
-                <div className="text-xs text-gray-600 space-y-1">
-                  <div>ID: {log.id}</div>
-                  <div>Type: {log.symptom_type}</div>
-                  <div>Severity: {log.severity_scale}/10</div>
-                  <div>Created: {log.created_at}</div>
-                  <div>Updated: {(log as any).updated_at || 'N/A'}</div>
-                </div>
-              </div>
             </div>
           </div>
         </motion.div>
@@ -673,172 +661,146 @@ export default function TimelinePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center gap-4">
+      <header className="bg-white/95 backdrop-blur-sm border-b border-gray-100 sticky top-0 z-40">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6">
+          <div className="flex justify-between items-center h-14">
+            <div className="flex items-center gap-3">
               <button
-                onClick={() => router.back()}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                onClick={() => router.push('/symptoms')}
+                className="p-1.5 hover:bg-gray-100 rounded-full transition-colors text-gray-600"
               >
                 <ChevronLeft size={20} />
               </button>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">Timeline</h1>
-                <p className="text-sm text-gray-500">
-                  {state.isSearching 
-                    ? `Search results (${displayLogs.length}${state.dateFilter.isActive ? ' filtered' : ''})`
-                    : `Your symptom logs (${displayLogs.length}${state.dateFilter.isActive ? ' filtered' : ''})`
+                <h1 className="text-lg font-semibold text-gray-900">Timeline</h1>
+                <p className="text-xs text-gray-500">
+                  {state.isSearching
+                    ? `${displayLogs.length} result${displayLogs.length !== 1 ? 's' : ''}`
+                    : `${displayLogs.length} log${displayLogs.length !== 1 ? 's' : ''}`
                   }
+                  {state.dateFilter.isActive ? ' (filtered)' : ''}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={debugLogs}
-                className="px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
-              >
-                Debug
-              </button>
-              <button
-                onClick={createTestLog}
-                className="px-3 py-1 bg-green-500 text-white text-sm rounded-md hover:bg-green-600 transition-colors"
-              >
-                <Plus size={16} className="inline mr-1" />
-                Test Log
-              </button>
-              <button
-                onClick={() => fetchLogs()}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                disabled={state.loading}
-              >
-                <RefreshCw size={16} className={state.loading ? 'animate-spin' : ''} />
-              </button>
-            </div>
+            <button
+              onClick={() => fetchLogs()}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
+              disabled={state.loading}
+            >
+              <RefreshCw size={16} className={state.loading ? 'animate-spin' : ''} />
+            </button>
           </div>
         </div>
       </header>
 
       {/* Search and Filters */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="space-y-4">
-            {/* Search Bar */}
-            <div className="flex items-center gap-4">
+      <div className="bg-white border-b border-gray-100">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3">
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
               <div className="flex-1 relative">
-                <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search logs by keyword, tag, or symptom..."
+                  placeholder="Search symptoms..."
                   value={state.searchQuery}
                   onChange={(e) => handleSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-full focus:ring-2 focus:ring-[#34A853]/40 focus:border-[#34A853] bg-gray-50 transition-colors"
                 />
               </div>
               {state.isSearching && (
                 <button
                   onClick={() => handleSearch('')}
-                  className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md hover:bg-gray-50"
+                  className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-full hover:bg-gray-50"
                 >
                   Clear
                 </button>
               )}
             </div>
 
-            {/* Date Filter */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Calendar size={16} className="text-gray-500" />
-                <span className="text-sm font-medium text-gray-700">Date Range:</span>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <Calendar size={14} className="text-gray-400" />
+                <span className="text-xs text-gray-500">From</span>
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={state.dateFilter.startDate || ''}
-                  onChange={(e) => handleDateFilter(e.target.value || null, state.dateFilter.endDate)}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Start date"
-                />
-                <span className="text-gray-500">to</span>
-                <input
-                  type="date"
-                  value={state.dateFilter.endDate || ''}
-                  onChange={(e) => handleDateFilter(state.dateFilter.startDate, e.target.value || null)}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="End date"
-                />
-                {state.dateFilter.isActive && (
-                  <button
-                    onClick={clearDateFilter}
-                    className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md hover:bg-gray-50"
-                  >
-                    Clear Dates
-                  </button>
-                )}
-              </div>
+              <input
+                type="date"
+                value={state.dateFilter.startDate || ''}
+                onChange={(e) => handleDateFilter(e.target.value || null, state.dateFilter.endDate)}
+                className="px-2.5 py-1 text-xs border border-gray-200 rounded-md focus:ring-2 focus:ring-[#34A853]/40 focus:border-[#34A853]"
+              />
+              <span className="text-xs text-gray-400">to</span>
+              <input
+                type="date"
+                value={state.dateFilter.endDate || ''}
+                onChange={(e) => handleDateFilter(state.dateFilter.startDate, e.target.value || null)}
+                className="px-2.5 py-1 text-xs border border-gray-200 rounded-md focus:ring-2 focus:ring-[#34A853]/40 focus:border-[#34A853]"
+              />
+              {state.dateFilter.isActive && (
+                <button
+                  onClick={clearDateFilter}
+                  className="px-2.5 py-1 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-full hover:bg-gray-50"
+                >
+                  Clear
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div
-          ref={scrollContainerRef}
-          className="space-y-4 max-h-[calc(100vh-200px)] overflow-y-auto"
-        >
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-4">
+        <div ref={scrollContainerRef}>
           {state.loading ? (
-            <div className="flex items-center justify-center py-12">
+            <div className="flex items-center justify-center py-16">
               <div className="flex items-center gap-3">
-                <RefreshCw size={20} className="animate-spin text-blue-500" />
-                <span className="text-gray-500">Loading logs...</span>
+                <RefreshCw size={18} className="animate-spin text-[#34A853]" />
+                <span className="text-sm text-gray-500">Loading logs...</span>
               </div>
             </div>
           ) : state.error ? (
-            <div className="flex items-center justify-center py-12">
+            <div className="flex items-center justify-center py-16">
               <div className="text-center">
-                <AlertCircle size={48} className="mx-auto text-red-500 mb-4" />
-                <div className="text-red-600 mb-4">{state.error}</div>
+                <AlertCircle size={40} className="mx-auto text-red-400 mb-3" />
+                <div className="text-sm text-red-600 mb-3">{state.error}</div>
                 <button
                   onClick={() => fetchLogs()}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                  className="px-4 py-2 text-sm bg-[#34A853] text-white rounded-lg hover:bg-[#2d9249] transition-colors"
                 >
                   Try Again
                 </button>
               </div>
             </div>
           ) : displayLogs.length === 0 ? (
-            <div className="flex items-center justify-center py-12">
+            <div className="flex items-center justify-center py-16">
               <div className="text-center">
-                <Calendar size={48} className="mx-auto text-gray-400 mb-4" />
-                <div className="text-gray-500 mb-2">
-                  {state.isSearching 
+                <Calendar size={40} className="mx-auto text-gray-300 mb-3" />
+                <div className="text-sm text-gray-500 mb-1">
+                  {state.isSearching
                     ? 'No logs match your search'
                     : state.dateFilter.isActive
-                      ? 'No logs found in the selected date range'
-                      : 'No logs found yet'
+                      ? 'No logs in this date range'
+                      : 'No symptoms logged yet'
                   }
                 </div>
-                {!state.isSearching && (
-                  <div className="text-sm text-gray-400 mb-4">
-                    <p>Start tracking your symptoms to see them here.</p>
-                    <p>Or create a test log to see how the timeline works.</p>
-                  </div>
-                )}
-                {!state.isSearching && (
-                  <button
-                    onClick={createTestLog}
-                    className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
-                  >
-                    <Plus size={16} className="inline mr-2" />
-                    Create Test Log
-                  </button>
+                {!state.isSearching && !state.dateFilter.isActive && (
+                  <p className="text-xs text-gray-400">Use the chat to log your first symptom.</p>
                 )}
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              {displayLogs.map((log, index) => renderLogCard(log, index))}
+            <div>
+              {/* Timeline header */}
+              <div className="flex items-center gap-2 mb-6">
+                <div className="w-2.5 h-2.5 rounded-full bg-[#34A853]" />
+                <span className="text-xs font-semibold tracking-widest text-[#34A853] uppercase">Symptom Timeline</span>
+              </div>
+
+              {/* Timeline entries */}
+              <div className="ml-1">
+                {displayLogs.map((log, index) => renderTimelineEntry(log, index, index === displayLogs.length - 1))}
+              </div>
             </div>
           )}
         </div>

@@ -58,6 +58,16 @@ All colors MUST be HSL.
 
     --radius: 0.5rem;
 
+    /* WhatsApp-inspired palette */
+    --wa-header: #14532D;
+    --wa-header-light: #34A853;
+    --wa-wallpaper: #ECE5DD;
+    --wa-user-bubble: #dcf8e6;
+    --wa-bot-bubble: #ffffff;
+    --wa-input-bg: #f0f2f5;
+    --wa-timestamp: #667781;
+    --wa-check: #53bdeb;
+
     --sidebar-background: 0 0% 98%;
 
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -211,5 +221,50 @@ All colors MUST be HSL.
       linear-gradient(90deg, var(--c) 1px, transparent 1px);
     background-size: var(--s) var(--s), var(--s) var(--s);
     mask-image: radial-gradient(900px 480px at 50% 0%, #000 40%, transparent 80%); /* only near top */
+  }
+
+  /* WhatsApp-style chat wallpaper */
+  .chat-wallpaper {
+    background-color: var(--wa-wallpaper);
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23c8bfb6' fill-opacity='0.15'%3E%3Cpath d='M28 4h4v4h-4zM28 52h4v4h-4zM4 28h4v4H4zM52 28h4v4h-4z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+
+  /* Bubble tails */
+  .bubble-tail-right {
+    position: relative;
+  }
+  .bubble-tail-right::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -6px;
+    width: 0;
+    height: 0;
+    border-left: 6px solid #dcf8e6;
+    border-top: 6px solid #dcf8e6;
+    border-right: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+  }
+
+  .bubble-tail-left {
+    position: relative;
+  }
+  .bubble-tail-left::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -6px;
+    width: 0;
+    height: 0;
+    border-right: 6px solid #ffffff;
+    border-top: 6px solid #ffffff;
+    border-left: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+  }
+
+  /* Green date picker accents */
+  .date-picker-green:focus {
+    --tw-ring-color: #34A853;
+    border-color: #34A853;
   }
 }

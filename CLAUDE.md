@@ -39,6 +39,8 @@ Required in `.env.local`:
 - **`app/symptoms/page.tsx`** — Symptom dashboard/management
 - **`app/past-logs/page.tsx`** — Historical symptom log viewer
 - **`app/settings/page.tsx`** — User settings
+- **`app/timeline/page.tsx`** — Health history timeline view
+- **`app/auth/callback/page.tsx`** — OAuth callback handler
 
 ### Components
 
@@ -61,6 +63,8 @@ All API routes use Next.js Route Handlers. Auth is enforced via Bearer token in 
 - `symptoms/summary/*` — Summary generation, labelling, follow-up
 - `symptoms/overview` — Symptom overview/dashboard data
 - `symptoms/canonicalize` — Symptom name canonicalisation
+- `symptoms/search` — Symptom search
+- `symptoms/process-transcript` — Process voice transcript into structured data
 
 **Voice:** `voice/transcribe` — Voice-to-text transcription
 
