@@ -11,7 +11,7 @@ export default function ChatPage() {
   useEffect(() => {
     const authToken = localStorage.getItem('authToken');
     const userData = localStorage.getItem('userData');
-    
+
     if (authToken && userData) {
       setToken(authToken);
       setUser(JSON.parse(userData));
@@ -40,10 +40,10 @@ export default function ChatPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2F80ED] mx-auto"></div>
+          <p className="mt-3 text-gray-500 text-sm">Loading...</p>
         </div>
       </div>
     );
@@ -51,13 +51,13 @@ export default function ChatPage() {
 
   if (!token) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Authentication Required</h1>
-          <p className="text-gray-600 mb-6">Please log in to access the chat.</p>
+          <h1 className="text-xl font-semibold text-gray-900 mb-3">Authentication Required</h1>
+          <p className="text-gray-500 mb-6 text-sm">Please log in to access the chat.</p>
           <button
             onClick={() => window.location.href = '/auth'}
-            className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            className="px-5 py-2.5 bg-[#2F80ED] text-white rounded-md hover:bg-[#2570D4] transition-colors text-sm font-medium"
           >
             Go to Login
           </button>
@@ -67,50 +67,43 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Long Banner Header */}
-      <div className="bg-gradient-to-r from-green-600 via-green-700 to-green-800 shadow-lg">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="flex justify-between items-center">
-            {/* Brand and Title */}
-            <div className="flex items-center space-x-4">
-              <div className="text-white text-2xl font-extrabold tracking-wide">Sympli</div>
-              <div>
-                <p className="text-green-100 text-lg">Voice-first health companion</p>
-              </div>
-            </div>
+    <div className="h-screen flex flex-col bg-white">
+      {/* Minimal Top Header */}
+      <header className="flex-shrink-0 border-b border-gray-100 bg-white">
+        <div className="px-4 sm:px-6 h-14 flex items-center justify-between">
+          {/* Logo and Product Name */}
+          <div className="flex items-center gap-3">
+            <img src="/logo.svg" alt="Sympli" width={100} height={34} />
+          </div>
 
-            {/* Two Buttons */}
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={handleUserData}
-                className="flex items-center space-x-2 px-4 py-3 bg-white bg-opacity-20 text-white rounded-xl hover:bg-white hover:bg-opacity-30 transition-all duration-200 border border-white border-opacity-30"
-              >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                </svg>
-                <span className="font-medium">Profile</span>
-              </button>
-              
-              <button
-                onClick={handleLogout}
-                className="flex items-center space-x-2 px-4 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-200 shadow-lg"
-              >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd" />
-                </svg>
-                <span className="font-medium">Logout</span>
-              </button>
-            </div>
+          {/* Navigation Actions */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleUserData}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <span className="hidden sm:inline">Profile</span>
+            </button>
+
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-md transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Chat Container */}
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
-          <SymptomChat token={token} onComplete={handleComplete} onCancel={handleCancel} />
-        </div>
+      {/* Full-Screen Chat Area */}
+      <div className="flex-1 overflow-hidden">
+        <SymptomChat token={token} onComplete={handleComplete} onCancel={handleCancel} />
       </div>
     </div>
   );
